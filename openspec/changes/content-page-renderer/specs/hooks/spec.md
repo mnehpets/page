@@ -1,17 +1,17 @@
 ## ADDED Requirements
 
 ### Requirement: FileRenderer hook
-The system SHALL expose a `FileRenderer() FileRendererFunc` method on `Site`. `FileRendererFunc` has signature `(urlPath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. `endpoint.FileSystem` passes the request URL path and the open `fs.File` directly; the hook calls `site.Get(urlPath)` and, if the page is found, returns a Renderer that calls `page.Render(w, r, site, layout)`.
+The system SHALL expose a `FileRenderer() endpoint.FileRendererHook` method on `Site`. `endpoint.FileRendererHook` has signature `(urlPath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. `endpoint.FileSystem` calls the hook after path normalisation, passing the request URL path and the open `fs.File`; the hook calls `site.Get(urlPath)` and, if the page is found, returns a Renderer that calls `page.Render(w, r, site, layout)`.
 
-**File ownership:** if a page is found, ownership of the `fs.File` transfers to the hook — `endpoint.FileSystem` MUST NOT close it. If no page is found, ownership remains with `endpoint.FileSystem` and the hook MUST NOT close the file.
+**File ownership:** if a page is found, ownership of the `fs.File` transfers to the hook — `endpoint.FileSystem` MUST NOT close it. If no page is found, ownership remains with `endpoint.FileSystem` and the hook MUST NOT call `Read` on the file (`Stat` is safe).
 
 #### Scenario: Page found and renderer returned
-- **WHEN** `FileRendererFunc` is called with urlPath `/blog/hello-world.md` and the corresponding open file
+- **WHEN** the `FileRendererHook` is called with urlPath `/blog/hello-world.md` and the corresponding open file
 - **THEN** it finds the page at `/blog/hello-world.md` and returns a non-nil `endpoint.Renderer`
 
 #### Scenario: Page not found returns nil
-- **WHEN** `FileRendererFunc` is called with a URL path that is not in the site index (e.g. `/style.css`)
-- **THEN** it returns `nil, nil` without closing the file
+- **WHEN** the `FileRendererHook` is called with a URL path that is not in the site index (e.g. `/style.css`)
+- **THEN** it returns `nil, nil` without closing or reading the file
 
 #### Scenario: Renderer calls page.Render
 - **WHEN** the returned `endpoint.Renderer` is executed by `endpoint.FileSystem`
@@ -23,46 +23,48 @@ The system SHALL expose a `FileRenderer() FileRendererFunc` method on `Site`. `F
 
 ---
 
-### Requirement: DirFallback hook
-The system SHALL expose a `DirFallback() DirFallbackFunc` method on `Site`. `DirFallbackFunc` has signature `(urlPath string) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. When called by `endpoint.FileSystem` for a directory request, it receives the URL path string for the directory (e.g. `/blog`) and calls `site.Get(urlPath)`. This works because `index.md`, `index.html`, and `index.htm` files are registered in the site index under their parent directory path rather than their file path (e.g. `blog/index.md` is indexed at `/blog`). If a page is found, it returns a non-nil `endpoint.Renderer`; otherwise it returns `nil, nil`. No file ownership concerns apply — no `fs.File` is passed.
+### Requirement: DirRenderer hook
+The system SHALL expose a `DirRenderer() endpoint.FileRendererHook` method on `Site`. The hook signature is the same type as `FileRendererHook`: `(urlPath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. When called by `endpoint.FileSystem` for a directory request, it receives the URL path string for the directory (e.g. `/blog/`) and the open directory `fs.File`, then calls `site.Get(urlPath)`. This works because `index.html`, `index.htm`, and `index.md` files are registered in the site index under their parent directory path rather than their file path (e.g. `blog/index.md` is indexed at `/blog/`). When multiple index files exist, priority is resolved at `NewSite` time (`index.html` > `index.htm` > `index.md`) so the hook always calls a single `site.Get` with no ambiguity. If a page is found, it returns a non-nil `endpoint.Renderer`; otherwise it returns `nil, nil`.
+
+The hook is called after path normalisation but **before** any index-file lookup or directory listing, giving it priority over `IndexHTML`. The hook MUST NOT call `ReadDir` on the file if it returns `nil, nil` (`Stat` is safe). File ownership on a non-nil return transfers to the hook; on `nil, nil` ownership remains with `endpoint.FileSystem`.
 
 #### Scenario: Directory URL resolves to index.md
-- **WHEN** `DirFallbackFunc` is called with urlPath `/blog` and `blog/index.md` is registered at `/blog`
+- **WHEN** the `DirRendererHook` is called with urlPath `/blog/` and `blog/index.md` is registered at `/blog/`
 - **THEN** it returns a non-nil `endpoint.Renderer` for that page
 
 #### Scenario: Directory URL resolves to index.html
-- **WHEN** `DirFallbackFunc` is called with urlPath `/blog` and `blog/index.html` is registered at `/blog`
+- **WHEN** the `DirRendererHook` is called with urlPath `/blog/` and `blog/index.html` is registered at `/blog/`
 - **THEN** it returns a non-nil `endpoint.Renderer` for that page
 
 #### Scenario: No index page returns nil
-- **WHEN** `DirFallbackFunc` is called with urlPath `/blog` and no page is registered at `/blog`
+- **WHEN** the `DirRendererHook` is called with urlPath `/blog/` and no page is registered at `/blog/`
 - **THEN** it returns `nil, nil`
 
 ---
 
 ### Requirement: Hook fall-through preserves existing behaviour
-The system SHALL ensure that returning `nil, nil` from either hook function causes `endpoint.FileSystem` to fall through to its default handling (e.g., `http.ServeContent` for static files, default directory listing or 404). This MUST be the behaviour when the hooks are omitted entirely via `WithFileRenderer` / `WithDirFallback`.
+The system SHALL ensure that returning `nil, nil` from either hook causes `endpoint.FileSystem` to fall through to its default handling (e.g., `http.ServeContent` for static files, `IndexHTML` lookup, directory listing, or 404). This MUST be the behaviour when the hooks are omitted entirely via `WithFileRenderer` / `WithDirRenderer`.
 
 #### Scenario: Nil return causes fall-through
 - **WHEN** a hook returns `nil, nil`
 - **THEN** `endpoint.FileSystem` handles the request using its default logic
 
 #### Scenario: Omitted hooks preserve default behaviour
-- **WHEN** `endpoint.FileSystem` is constructed without `WithFileRenderer` or `WithDirFallback`
+- **WHEN** `endpoint.FileSystem` is constructed without `WithFileRenderer` or `WithDirRenderer`
 - **THEN** all requests are handled exactly as they were before the options were added
 
 ---
 
 ### Requirement: oneserve functional options
-The system SHALL add `WithFileRenderer(FileRendererFunc)` and `WithDirFallback(DirFallbackFunc)` as functional options to `endpoint.FileSystem` in `github.com/mnehpets/oneserve`. These options MUST be the only change to the `oneserve` API.
+The system SHALL add `WithFileRenderer(FileRendererHook)` and `WithDirRenderer(FileRendererHook)` as functional options to `endpoint.FileSystem` in `github.com/mnehpets/oneserve`. Both options accept the same `FileRendererHook` type. These options MUST be the only change to the `oneserve` API.
 
 #### Scenario: FileRenderer option accepted
 - **WHEN** `endpoint.FileSystem` is constructed with `WithFileRenderer(site.FileRenderer())`
 - **THEN** the file renderer hook is active for all file requests
 
-#### Scenario: DirFallback option accepted
-- **WHEN** `endpoint.FileSystem` is constructed with `WithDirFallback(site.DirFallback())`
-- **THEN** the directory fallback hook is active for all directory requests
+#### Scenario: DirRenderer option accepted
+- **WHEN** `endpoint.FileSystem` is constructed with `WithDirRenderer(site.DirRenderer())`
+- **THEN** the directory renderer hook is active for all directory requests, taking priority over index-file lookup
 
 #### Scenario: Existing callers unaffected
 - **WHEN** existing code constructs `endpoint.FileSystem` without the new options

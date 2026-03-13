@@ -144,9 +144,9 @@ The system SHALL parse metadata from `.html` files via a `<script type="applicat
 ---
 
 ### Requirement: htmlPage renders HTML content
-The system SHALL render `.html` pages by passing the HTML file's body content as `template.HTML` to the layout template. The raw HTML MUST NOT be re-escaped.
+The system SHALL render `.html` pages by populating `RenderContext.Content` with the page's body HTML and `RenderContext.Head` with the inner HTML of the source `<head>` element (excluding fields already captured by `Meta`), then executing the layout template with that `RenderContext` and writing the result to `w`. The raw HTML in `Content` and `Head` MUST NOT be re-escaped.
 
 #### Scenario: HTML content rendered through layout
 - **WHEN** `page.Render` is called on an `htmlPage`
-- **THEN** the page passes its body as `template.HTML` to the layout and writes the result to `w`
+- **THEN** the page populates `RenderContext.Content` with the body HTML and `RenderContext.Head` with the remaining head HTML, executes the layout template with that `RenderContext`, and writes the result to `w`
 

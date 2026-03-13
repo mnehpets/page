@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Site interface
-The system SHALL define a `Site` interface with the following query methods: `Get(urlPath string) (Page, bool)`, `All() []Page`, `ByTag(tag string) []Page`, `ByCollection(name string) []Page`. The object exposed to `html/template` via `RenderData.Site` MUST be the `Site` interface, not a concrete type.
+The system SHALL define a `Site` interface with the following query methods: `Get(urlPath string) (Page, bool)`, `All() []Page`, `ByTag(tag string) []Page`, `ByCollection(name string) []Page`. The object exposed to `html/template` via `RenderContext.Site` MUST be the `Site` interface, not a concrete type.
 
 #### Scenario: Get returns page by URL path
 - **WHEN** `site.Get("/blog/hello-world.md")` is called and a page is registered at that path
@@ -38,7 +38,7 @@ The system SHALL provide `NewSite(fsys fs.FS, opts ...SiteOption) (Site, error)`
 
 #### Scenario: index file maps to directory path
 - **WHEN** a file exists at `blog/index.html`, `blog/index.htm`, or `blog/index.md` in the FS
-- **THEN** its URL path is `/blog`
+- **THEN** its URL path is `/blog/`
 
 #### Scenario: index file conflict resolution
 - **WHEN** a directory contains more than one index file (e.g. both `blog/index.html` and `blog/index.md`)
