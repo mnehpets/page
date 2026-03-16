@@ -1,0 +1,17 @@
+github.com/mnehpets/fs v0.0.0-20260316002752-08ced22c3bce h1:xXaDub5SzRU+HklXkAQ5+7bb/B4aX5JhNRdl6EfnA8s=
+github.com/mnehpets/fs v0.0.0-20260316002752-08ced22c3bce/go.mod h1:gLCu6WYenngFeQ3R0zLrVxftqiLAWLFNYPJI1sEB52c=
+github.com/mnehpets/fs v0.0.0-20260316022602-78c926c5e561 h1:h2tZqgEb6kvk0nWytgn1z0qfjezZdLoEKknbveoiwmA=
+github.com/mnehpets/fs v0.0.0-20260316022602-78c926c5e561/go.mod h1:gLCu6WYenngFeQ3R0zLrVxftqiLAWLFNYPJI1sEB52c=
+github.com/mnehpets/oneserve v0.0.0-20260313045321-2230569879cb h1:8gKynjsoKFvSW8DsOYFKWw+bOvv7RjLAzZkQJyrUw68=
+github.com/mnehpets/oneserve v0.0.0-20260313045321-2230569879cb/go.mod h1:Mefkf9Klr5HD1aflo4af27O6c7BYhTWEVGrEmNIibW0=
+github.com/mnehpets/oneserve v0.0.0-20260316011704-9acd1189b8c2 h1:0EDXloNLA3CQka8W40/I+Dg13ClX83HGfMA3CPJJTvM=
+github.com/mnehpets/oneserve v0.0.0-20260316011704-9acd1189b8c2/go.mod h1:Mefkf9Klr5HD1aflo4af27O6c7BYhTWEVGrEmNIibW0=
+github.com/yuin/goldmark v1.7.16 h1:n+CJdUxaFMiDUNnWC3dMWCIQJSkxH4uz3ZwQBkAlVNE=
+github.com/yuin/goldmark v1.7.16/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
+github.com/yuin/goldmark-meta v1.1.0 h1:pWw+JLHGZe8Rk0EGsMVssiNb/AaPMHfSRszZeUeiOUc=
+github.com/yuin/goldmark-meta v1.1.0/go.mod h1:U4spWENafuA7Zyg+Lj5RqK/MF+ovMYtBvXi1lBb2VP0=
+golang.org/x/net v0.52.0 h1:He/TN1l0e4mmR3QqHMT2Xab3Aj3L9qjbhRm78/6jrW0=
+golang.org/x/net v0.52.0/go.mod h1:R1MAz7uMZxVMualyPXb+VaqGSa3LIaUqk0eEt3w36Sw=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v2 v2.3.0 h1:clyUAQHOM3G0M3f5vQj7LuJrETvjVot3Z5el9nffUtU=
+gopkg.in/yaml.v2 v2.3.0/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
