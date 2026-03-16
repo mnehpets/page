@@ -1,0 +1,16 @@
+{{define "default"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Meta.Title}}</title>
+  <link rel="stylesheet" href="/style.css">
+  {{with .JSONLD}}<script type="application/ld+json">{{.}}</script>{{end}}
+  {{.Head}}
+</head>
+<body>
+  <nav><a href="/">Home</a> · <a href="/blog/">Blog</a></nav>
+  <main>{{.Content}}</main>
+</body>
+</html>
+{{end}}

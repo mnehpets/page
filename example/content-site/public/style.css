@@ -1,0 +1,4 @@
+body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+nav { margin-bottom: 2rem; }
+nav a { margin-right: 1rem; }
+pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }

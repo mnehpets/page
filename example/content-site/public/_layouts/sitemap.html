@@ -1,0 +1,12 @@
+{{define "sitemap"}}{{safeHTML "<?xml version='1.0' encoding='UTF-8'?>"}}
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{{- range .Site.All}}{{if not (hasTag . "noindex")}}
+  <url>
+    <loc>https://{{$.Request.Host}}{{.URLPath}}</loc>
+    {{- if not .Meta.Date.IsZero}}
+    <lastmod>{{.Meta.Date.Format "2006-01-02"}}</lastmod>
+    {{- end}}
+  </url>
+{{- end}}{{end}}
+</urlset>
+{{end}}
