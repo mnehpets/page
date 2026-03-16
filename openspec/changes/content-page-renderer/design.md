@@ -21,7 +21,7 @@
 
 ### Page interface over concrete struct
 
-**Decision:** Define `Page` as an interface (`URLPath`, `Meta`, `Render`) rather than a concrete struct. The primary responsibility of a `Page` is rendering its content to an `io.Writer`; metadata and URL path are secondary, supporting the `Site` index and template queries.
+**Decision:** Define `Page` as an interface (`URLPath`, `Meta`, `Renderer`) rather than a concrete struct. The primary responsibility of a `Page` is producing an `endpoint.Renderer` for its content; metadata and URL path are secondary, supporting the `Site` index and template queries.
 
 **Rationale:** External content sources (CMS APIs, generated pages) need to integrate without re-implementing file parsing. The interface keeps the library open for extension without modifying core types.
 
@@ -65,9 +65,9 @@ There is no `Collection` type. "Collection" is a string attribute on a page's `M
 
 ### Hook-based oneserve integration
 
-**Decision:** Add two functional options (`WithFileRenderer(FileRendererFunc)`, `WithDirFallback(DirFallbackFunc)`) to `endpoint.FileSystem` in `oneserve`, passed at construction time. Omitting the options preserves existing behaviour.
+**Decision:** Add two functional options (`WithFileRenderer(FileRendererHook)`, `WithDirRenderer(FileRendererHook)`) to `endpoint.FileSystem` in `oneserve`, passed at construction time. Omitting the options preserves existing behaviour.
 
-**Rationale:** Keeps `oneserve` unaware of `page` — the dependency flows one way. Hook functions return `(Renderer, error)` matching the existing `endpoint.Renderer` interface; returning `nil, nil` signals fall-through. `FileRendererFunc` has signature `(urlPath string, f fs.File) (Renderer, error)` — `endpoint.FileSystem` passes both the request URL path and the open file directly; the hook calls `site.Get(urlPath)` and, if the page is found, calls `page.Render(w, r, site, layout)`. URL paths for regular content files include the file extension (e.g. `/blog/hello-world.md`); `index.md` / `index.html` files are the exception, registered under the parent directory path (e.g. `/blog`). `DirFallbackFunc(urlPath string) (Renderer, error)` handles directory requests, finding e.g. `blog/index.md` registered at `/blog`. Functional options keep the `endpoint.FileSystem` struct unexported-friendly and avoid nil-field checks scattered through the implementation.
+**Rationale:** Keeps `oneserve` unaware of `page` — the dependency flows one way. Hook functions return `(Renderer, error)` matching the existing `endpoint.Renderer` interface; returning `nil, nil` signals fall-through. `FileRendererHook` has signature `(urlPath string, f fs.File) (Renderer, error)` — `endpoint.FileSystem` passes both the request URL path and the open file; the hook calls `site.Get(urlPath)` and, if the page is found, closes `f` immediately (the page holds its own FS reference and re-reads content at render time) then returns a `RendererFunc` that calls `page.Renderer(r, site, layout)`. URL paths for regular content files include the file extension (e.g. `/blog/hello-world.md`); `index.md` / `index.html` files are the exception, registered under the parent directory path (e.g. `/blog/`). Functional options keep the `endpoint.FileSystem` struct unexported-friendly and avoid nil-field checks scattered through the implementation.
 
 **Alternative considered:** A middleware wrapper that intercepts `ServeHTTP`. Rejected — requires duplicating static file handling and breaks range requests.
 
@@ -77,7 +77,7 @@ There is no `Collection` type. "Collection" is a string attribute on a page's `M
 
 **Decision:** A `Layout` type wraps a parsed `*html/template` set containing one or more named layout templates. The layout name is specified as a front matter field (for `.md` files) or a JSON-LD field (for `.html` files). `NewSite` discovers and parses layouts from a `_layouts/` subdirectory within the content `fs.FS` at construction time. A `WithLayout(*Layout)` functional option overrides this convention when callers want full control over layout file locations.
 
-**Render flow:** The Site hook calls `page.Render(w, r, site, layout)`. Inside `page.Render`, the page renders its content to a buffer, then executes the layout template named by `meta.Layout` with a `RenderContext` struct: `{Content template.HTML, Head template.HTML, Meta Meta, Site Site, Request *http.Request}`. `Head` carries page-specific head elements: for `.html` files this is the `<head>` inner HTML excluding fields already captured by `Meta`; for `.md` files it is any head content produced by the Markdown renderer (empty when no extensions contribute head content). `RenderContext` is the template-facing type; it is constructed inside `page.Render`, not by the hook. This keeps the hook thin and each `Page` implementation self-contained.
+**Render flow:** The Site hook calls `page.Renderer(r, site, layout)`. Inside `page.Renderer`, the page renders its content to a buffer, then returns an `endpoint.HTMLTemplateRenderer` for the layout template named by `meta.Layout` (fallback: `"default"`) with a `RenderContext` struct: `{Content template.HTML, Head template.HTML, Meta Meta, Site Site, Request *http.Request}`. `Head` carries page-specific head elements: for `.html` files this is the `<head>` inner HTML excluding fields already captured by `Meta`; for `.md` files it is any head content produced by the Markdown renderer (empty when no extensions contribute head content). `RenderContext` is the template-facing type; it is constructed inside `page.Renderer`, not by the hook. This keeps the hook thin and each `Page` implementation self-contained. Using `endpoint.HTMLTemplateRenderer` means Content-Type, response buffering, and status code are all handled consistently by the endpoint framework.
 
 **Rationale:** Applying the layout inside `page.Render` keeps the hook simple (it only resolves the page and calls Render) and avoids exposing template data construction as an API concern. `_layouts/` discovery at `NewSite` time is consistent with the two-phase approach (layout templates are parsed once; content is read at render time). The `WithLayout` override makes the convention escapable without changing the core API.
 
@@ -97,7 +97,7 @@ There is no `Collection` type. "Collection" is a string attribute on a page's `M
 
 This is a greenfield module — no migration from existing callers is required.
 
-The companion change to `oneserve` adds two functional options (`WithFileRenderer`, `WithDirFallback`) to `endpoint.FileSystem`. Because existing callers do not pass these options, the change is a drop-in non-breaking addition. No oneserve callers need updating.
+The companion change to `oneserve` adds two functional options (`WithFileRenderer`, `WithDirRenderer`) to `endpoint.FileSystem`. Because existing callers do not pass these options, the change is a drop-in non-breaking addition. No oneserve callers need updating.
 
 Rollback: revert the two functional option additions to `endpoint.FileSystem` — all existing callers continue working unmodified.
 

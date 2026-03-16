@@ -1,9 +1,9 @@
 ## ADDED Requirements
 
 ### Requirement: FileRenderer hook
-The system SHALL expose a `FileRenderer() endpoint.FileRendererHook` method on `Site`. `endpoint.FileRendererHook` has signature `(urlPath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. `endpoint.FileSystem` calls the hook after path normalisation, passing the request URL path and the open `fs.File`; the hook calls `site.Get(urlPath)` and, if the page is found, returns a Renderer that calls `page.Render(w, r, site, layout)`.
+The system SHALL expose a `FileRenderer() endpoint.FileRendererHook` method on `Site`. `endpoint.FileRendererHook` has signature `(urlPath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. `endpoint.FileSystem` calls the hook after path normalisation, passing the request URL path and the open `fs.File`; the hook calls `site.Get(urlPath)` and, if the page is found, closes `f` immediately (the page re-reads content from its own FS reference at render time) and returns a `RendererFunc` that calls `page.Renderer(r, site, layout)`.
 
-**File ownership:** if a page is found, ownership of the `fs.File` transfers to the hook — `endpoint.FileSystem` MUST NOT close it. If no page is found, ownership remains with `endpoint.FileSystem` and the hook MUST NOT call `Read` on the file (`Stat` is safe).
+**File ownership:** if a page is found, ownership of the `fs.File` transfers to the hook, which closes it immediately. If no page is found, ownership remains with `endpoint.FileSystem` and the hook MUST NOT call `Read` on the file (`Stat` is safe).
 
 #### Scenario: Page found and renderer returned
 - **WHEN** the `FileRendererHook` is called with urlPath `/blog/hello-world.md` and the corresponding open file
@@ -13,9 +13,9 @@ The system SHALL expose a `FileRenderer() endpoint.FileRendererHook` method on `
 - **WHEN** the `FileRendererHook` is called with a URL path that is not in the site index (e.g. `/style.css`)
 - **THEN** it returns `nil, nil` without closing or reading the file
 
-#### Scenario: Renderer calls page.Render
+#### Scenario: Renderer calls page.Renderer
 - **WHEN** the returned `endpoint.Renderer` is executed by `endpoint.FileSystem`
-- **THEN** it calls `page.Render(w, r, site, layout)` and writes the response
+- **THEN** it calls `page.Renderer(r, site, layout)` and delegates to the returned `endpoint.HTMLTemplateRenderer`
 
 #### Scenario: Render error propagated
 - **WHEN** `page.Render` returns a non-nil error

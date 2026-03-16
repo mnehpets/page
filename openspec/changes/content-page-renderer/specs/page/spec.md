@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Page interface
-The system SHALL define a `Page` interface with three methods: `URLPath() string`, `Meta() Meta`, and `Render(w io.Writer, r *http.Request, site Site, layout *Layout) error`. The primary responsibility of a `Page` is rendering its content; `URLPath` and `Meta` are secondary, supporting the `Site` index and template queries.
+The system SHALL define a `Page` interface with three methods: `URLPath() string`, `Meta() Meta`, and `Renderer(r *http.Request, site Site, layout *Layout) (endpoint.Renderer, error)`. The primary responsibility of a `Page` is producing a renderer for its content; `URLPath` and `Meta` are secondary, supporting the `Site` index and template queries.
 
-#### Scenario: Page renders to writer
-- **WHEN** `page.Render(w, r, site, layout)` is called
-- **THEN** the page writes its fully-rendered output (content wrapped in layout) to `w` and returns nil on success
+#### Scenario: Page returns a renderer
+- **WHEN** `page.Renderer(r, site, layout)` is called
+- **THEN** it returns a non-nil `endpoint.Renderer` that, when rendered, writes the fully-rendered output (content wrapped in layout) and returns nil on success
 
 #### Scenario: Page exposes URL path
 - **WHEN** `page.URLPath()` is called
@@ -63,27 +63,6 @@ Metadata is resolved using a three-level fallback chain, applied per field (firs
 
 ---
 
-### Requirement: PageFromFile auto-detection
-The system SHALL provide a `PageFromFile(urlPath string, f fs.File) (Page, error)` function that detects the page type from the file's name extension. For unrecognised extensions it MUST return `nil, nil`; the hook treats a nil page as a signal to fall through to the default file handler.
-
-#### Scenario: Markdown file detected
-- **WHEN** `PageFromFile` is called with a file whose name ends in `.md`
-- **THEN** it returns a `markdownPage`
-
-#### Scenario: HTML file detected
-- **WHEN** `PageFromFile` is called with a file whose name ends in `.html` or `.htm`
-- **THEN** it returns an `htmlPage`
-
-#### Scenario: Unrecognised extension returns nil
-- **WHEN** `PageFromFile` is called with a file whose name has any other extension (e.g. `.css`, `.png`)
-- **THEN** it returns `nil, nil`
-
-#### Scenario: Unreadable content file returns error
-- **WHEN** `PageFromFile` is called with a `.md` or `.html` file that cannot be read
-- **THEN** it returns a non-nil error
-
----
-
 ### Requirement: markdownPage parses YAML front matter
 The system SHALL parse YAML front matter from `.md` files. Front matter MUST be delimited by `---` on its own line at the start of the file and terminated by a second `---` line. The body is everything after the closing delimiter.
 
@@ -97,7 +76,7 @@ The system SHALL parse YAML front matter from `.md` files. Front matter MUST be 
 
 #### Scenario: Malformed YAML returns error
 - **WHEN** a `.md` file has `---`-delimited content that is not valid YAML
-- **THEN** `PageFromFile` returns a non-nil error
+- **THEN** `NewSite` (or `page.Renderer`) returns a non-nil error
 
 ---
 
@@ -105,8 +84,8 @@ The system SHALL parse YAML front matter from `.md` files. Front matter MUST be 
 The system SHALL render the Markdown body to HTML using `github.com/yuin/goldmark`. The renderer MUST NOT apply server-side syntax highlighting; fenced code blocks MUST emit `<code class="language-<lang>">` elements for client-side highlighting.
 
 #### Scenario: Markdown body rendered to HTML
-- **WHEN** `page.Render` is called on a `markdownPage`
-- **THEN** the page renders the Markdown body to HTML, populates `RenderContext.Content` (and `RenderContext.Head` if the renderer produces head content), and executes the layout template with that `RenderContext`, writing the result to `w`
+- **WHEN** `page.Renderer` is called on a `markdownPage`
+- **THEN** it returns an `endpoint.HTMLTemplateRenderer` with `RenderContext.Content` populated from the rendered Markdown body (and `RenderContext.Head` if goldmark extensions produce head content)
 
 #### Scenario: Fenced code block emits language class
 - **WHEN** a Markdown file contains a fenced code block with an info string (e.g. ` ```go `)
@@ -139,7 +118,7 @@ The system SHALL parse metadata from `.html` files via a `<script type="applicat
 
 #### Scenario: Invalid JSON returns error
 - **WHEN** an `.html` file contains a `<script type="application/ld+json">` block with invalid JSON
-- **THEN** `PageFromFile` returns a non-nil error
+- **THEN** `NewSite` returns a non-nil error
 
 ---
 
@@ -147,6 +126,6 @@ The system SHALL parse metadata from `.html` files via a `<script type="applicat
 The system SHALL render `.html` pages by populating `RenderContext.Content` with the page's body HTML and `RenderContext.Head` with the inner HTML of the source `<head>` element (excluding fields already captured by `Meta`), then executing the layout template with that `RenderContext` and writing the result to `w`. The raw HTML in `Content` and `Head` MUST NOT be re-escaped.
 
 #### Scenario: HTML content rendered through layout
-- **WHEN** `page.Render` is called on an `htmlPage`
-- **THEN** the page populates `RenderContext.Content` with the body HTML and `RenderContext.Head` with the remaining head HTML, executes the layout template with that `RenderContext`, and writes the result to `w`
+- **WHEN** `page.Renderer` is called on an `htmlPage`
+- **THEN** it returns an `endpoint.HTMLTemplateRenderer` with `RenderContext.Content` populated from the body HTML and `RenderContext.Head` from the remaining head HTML
 
