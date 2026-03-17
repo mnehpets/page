@@ -41,10 +41,14 @@ func (p *htmlPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, error
 	}
 
 	chain := layoutChain(p.meta)
+	var cfg SiteConfig
+	if site != nil {
+		cfg = site.Config()
+	}
 	meta, tmpl := p.meta, layout.Template()
 
 	return endpoint.RendererFunc(func(w http.ResponseWriter, r *http.Request) error {
-		ctx := RenderContext{Content: body, Head: head, JSONLD: jsonld, Meta: meta, Site: site, Request: r}
+		ctx := RenderContext{Content: body, Head: head, JSONLD: jsonld, Config: cfg, Meta: meta, Site: site, Request: r}
 		return renderChain(w, r, tmpl, chain, ctx)
 	}), nil
 }

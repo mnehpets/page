@@ -44,10 +44,14 @@ func (p *markdownPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, e
 
 	content := template.HTML(buf.String())
 	chain := layoutChain(p.meta)
+	var cfg SiteConfig
+	if site != nil {
+		cfg = site.Config()
+	}
 	meta, jsonld, tmpl := p.meta, metaToJSONLD(p.meta), layout.Template()
 
 	return endpoint.RendererFunc(func(w http.ResponseWriter, r *http.Request) error {
-		ctx := RenderContext{Content: content, JSONLD: jsonld, Meta: meta, Site: site, Request: r}
+		ctx := RenderContext{Content: content, JSONLD: jsonld, Config: cfg, Meta: meta, Site: site, Request: r}
 		return renderChain(w, r, tmpl, chain, ctx)
 	}), nil
 }

@@ -43,6 +43,7 @@ type RenderContext struct {
 	Content template.HTML
 	Head    template.HTML
 	JSONLD  template.JS // schema.org JSON-LD blob, ready to drop into <script type="application/ld+json">
+	Config  SiteConfig
 	Meta    Meta
 	Site    Site
 	Request *http.Request

@@ -16,8 +16,17 @@ type Site interface {
 	All() []Page
 	ByTag(tag string) []Page
 	ByCollection(name string) []Page
+	Config() SiteConfig
 	FileRenderer() endpoint.FileRendererHook
 	DirRenderer() endpoint.FileRendererHook
+}
+
+// SiteConfig holds operator-supplied configuration for the site.
+// It is available to all templates via .Config.
+type SiteConfig struct {
+	BaseURL string // canonical base URL, e.g. "https://example.com" (no trailing slash)
+	Name    string // site name, e.g. "My Blog"
+	Lang    string // BCP 47 language tag, e.g. "en"; defaults to "en" if empty
 }
 
 // SiteOption is a functional option for NewSite.
@@ -26,6 +35,7 @@ type SiteOption func(*siteConfig)
 type siteConfig struct {
 	layout        *Layout
 	includeDrafts bool
+	config        SiteConfig
 }
 
 // WithLayout overrides the automatic _layouts/ discovery. The provided Layout
@@ -40,10 +50,17 @@ func WithIncludeDrafts() SiteOption {
 	return func(c *siteConfig) { c.includeDrafts = true }
 }
 
+// WithConfig sets the operator-supplied site configuration made available to
+// all templates via .Config.
+func WithConfig(cfg SiteConfig) SiteOption {
+	return func(c *siteConfig) { c.config = cfg }
+}
+
 type fsSite struct {
 	pages  map[string]Page // urlPath → Page (all pages, including drafts)
 	layout *Layout
-	drafts bool // include drafts in query results
+	drafts bool       // include drafts in query results
+	config SiteConfig
 }
 
 // NewSite walks fsys, parses all .md, .html, and .htm files, and returns a
@@ -69,12 +86,14 @@ func NewSite(fsys fs.FS, opts ...SiteOption) (Site, error) {
 		return nil, err
 	}
 
-	return &fsSite{pages: pages, layout: layout, drafts: cfg.includeDrafts}, nil
+	return &fsSite{pages: pages, layout: layout, drafts: cfg.includeDrafts, config: cfg.config}, nil
 }
 
 // Layout returns the site's layout, which may be nil if no _layouts/ directory
 // was found and no WithLayout option was provided.
 func (s *fsSite) Layout() *Layout { return s.layout }
+
+func (s *fsSite) Config() SiteConfig { return s.config }
 
 func (s *fsSite) Get(urlPath string) (Page, bool) {
 	p, ok := s.pages[urlPath]

@@ -18,7 +18,11 @@ func main() {
 	// other files (CSS, images, etc.) are served as-is.
 	root := os.DirFS("public")
 
-	site, err := page.NewSite(root)
+	site, err := page.NewSite(root, page.WithConfig(page.SiteConfig{
+		BaseURL: "http://localhost:8080",
+		Name:    "Example Content Site",
+		Lang:    "en",
+	}))
 	if err != nil {
 		log.Fatal("NewSite:", err)
 	}
