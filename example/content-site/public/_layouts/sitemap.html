@@ -2,7 +2,7 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {{- range .Site.All}}{{if not (hasTag . "noindex")}}
   <url>
-    <loc>https://{{$.Request.Host}}{{.URLPath}}</loc>
+    <loc>{{$.Config.BaseURL}}{{.URLPath}}</loc>
     {{- if not .Meta.Date.IsZero}}
     <lastmod>{{.Meta.Date.Format "2006-01-02"}}</lastmod>
     {{- end}}
