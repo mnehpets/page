@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/mnehpets/oneserve/endpoint"
+	"github.com/mnehpets/http/endpoint"
 )
 
 // Site indexes pages by URL path and exposes query methods for use in templates.

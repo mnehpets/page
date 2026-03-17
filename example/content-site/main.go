@@ -8,7 +8,7 @@ import (
 	"os"
 
 	mnfs "github.com/mnehpets/fs"
-	"github.com/mnehpets/oneserve/endpoint"
+	"github.com/mnehpets/http/endpoint"
 	"github.com/mnehpets/page"
 )
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mnehpets/oneserve/endpoint"
+	"github.com/mnehpets/http/endpoint"
 	"golang.org/x/net/html"
 )
 
@@ -88,7 +88,6 @@ func newHTMLPageFromFS(urlPath string, fsys fs.FS, filePath string) (*htmlPage, 
 	}
 	return &htmlPage{urlPath: urlPath, meta: meta, fsys: fsys, filePath: filePath}, nil
 }
-
 
 // parseHTMLDocument parses raw HTML and returns (Meta, jsonld, headHTML, bodyHTML, error).
 // jsonld is the cleaned JSON-LD blob (site-private fields stripped) ready for a

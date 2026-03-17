@@ -8,13 +8,13 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/mnehpets/oneserve/endpoint"
+	"github.com/mnehpets/http/endpoint"
 )
 
 // builtinFuncs are available in all layout templates.
 //
 //   - json:        marshals any value to a JSON literal (returned as template.JS
-//                  so html/template does not double-escape it).
+//     so html/template does not double-escape it).
 //   - sortByDate:  wraps SortByDate for use in range pipelines.
 var builtinFuncs = template.FuncMap{
 	"json": func(v any) (template.JS, error) {

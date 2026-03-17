@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mnehpets/oneserve/endpoint"
+	"github.com/mnehpets/http/endpoint"
 )
 
 // Page is implemented by content files that can be rendered through a Layout.

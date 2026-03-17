@@ -8,7 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/mnehpets/oneserve/endpoint"
+	"github.com/mnehpets/http/endpoint"
 	"github.com/yuin/goldmark"
 	gmeta "github.com/yuin/goldmark-meta"
 	"github.com/yuin/goldmark/parser"
