@@ -40,9 +40,9 @@ func newIntegrationServer(t *testing.T) *httptest.Server {
 		FS: func(_ context.Context, _ *http.Request) (fs.FS, error) {
 			return integrationFS, nil
 		},
+		FileRenderer: site.FileRenderer(),
+		DirRenderer:  site.DirRenderer(),
 	}
-	endpoint.WithFileRenderer(site.FileRenderer())(fsHandler)
-	endpoint.WithDirRenderer(site.DirRenderer())(fsHandler)
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		params := endpoint.FileSystemParams{Path: strings.TrimPrefix(r.URL.Path, "/")}

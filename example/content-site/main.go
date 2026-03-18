@@ -37,9 +37,9 @@ func main() {
 		FS: func(_ context.Context, _ *http.Request) (fs.FS, error) {
 			return public, nil
 		},
+		FileRenderer: site.FileRenderer(),
+		DirRenderer:  site.DirRenderer(),
 	}
-	endpoint.WithFileRenderer(site.FileRenderer())(fsEndpoint)
-	endpoint.WithDirRenderer(site.DirRenderer())(fsEndpoint)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/{path...}", endpoint.HandleFunc(fsEndpoint.Endpoint))

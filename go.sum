@@ -1,7 +1,11 @@
 github.com/mnehpets/fs v0.1.0 h1:fe9IjclokAzRexTtAX8bdZzJDtLdMvYFD9ZnNz9q2Oo=
 github.com/mnehpets/fs v0.1.0/go.mod h1:gLCu6WYenngFeQ3R0zLrVxftqiLAWLFNYPJI1sEB52c=
+github.com/mnehpets/fs v0.2.0 h1:lCOG4Ak9pBDBzTftogkBAYhJTnKND9v5Pu0oOUhgwBI=
+github.com/mnehpets/fs v0.2.0/go.mod h1:gLCu6WYenngFeQ3R0zLrVxftqiLAWLFNYPJI1sEB52c=
 github.com/mnehpets/http v0.1.1 h1:YsZ0xNSPz6nz5SnUMN8F6kcb4Dy7WIGCFDA7sOSuNT0=
 github.com/mnehpets/http v0.1.1/go.mod h1:UZIAua5ghTRhcrZwkTWkWu0Pp75hGKhszHdTxwVKb9w=
+github.com/mnehpets/http v0.2.0 h1:coTq/ed2TFjmw2M8mqB55qgIjGl7DFVuZ6EOBPLFtJc=
+github.com/mnehpets/http v0.2.0/go.mod h1:W77tD9YOoBwP03fERpYM36u4TrsrFSMZ9RySAj0ljJI=
 github.com/yuin/goldmark v1.7.16 h1:n+CJdUxaFMiDUNnWC3dMWCIQJSkxH4uz3ZwQBkAlVNE=
 github.com/yuin/goldmark v1.7.16/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 github.com/yuin/goldmark-meta v1.1.0 h1:pWw+JLHGZe8Rk0EGsMVssiNb/AaPMHfSRszZeUeiOUc=
