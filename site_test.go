@@ -234,6 +234,28 @@ func TestSortByDate(t *testing.T) {
 	}
 }
 
+func TestSortByLastMod(t *testing.T) {
+	t1, _ := time.Parse("2006-01-02", "2024-01-01")
+	t2, _ := time.Parse("2006-01-02", "2024-06-15")
+
+	pages := []Page{
+		&markdownPage{urlPath: "/a", meta: Meta{LastMod: t1}},
+		&markdownPage{urlPath: "/b", meta: Meta{LastMod: t2}},
+		&markdownPage{urlPath: "/c", meta: Meta{}}, // zero LastMod
+	}
+
+	sorted := SortByLastMod(pages)
+	if sorted[0].URLPath() != "/b" {
+		t.Errorf("first page should be most recently modified (/b), got %q", sorted[0].URLPath())
+	}
+	if sorted[1].URLPath() != "/a" {
+		t.Errorf("second page should be /a, got %q", sorted[1].URLPath())
+	}
+	if sorted[2].URLPath() != "/c" {
+		t.Errorf("zero-lastmod page should be last, got %q", sorted[2].URLPath())
+	}
+}
+
 func TestPaginate(t *testing.T) {
 	pages := make([]Page, 25)
 	for i := range pages {

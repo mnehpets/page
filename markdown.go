@@ -95,4 +95,7 @@ func applyFSFallbacks(m *Meta, info fs.FileInfo) {
 	if m.Date.IsZero() {
 		m.Date = info.ModTime()
 	}
+	if m.LastMod.IsZero() {
+		m.LastMod = info.ModTime()
+	}
 }

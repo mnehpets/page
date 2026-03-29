@@ -25,6 +25,7 @@ Accessed as `.Meta.FieldName` in a template.
 | `.Meta.Title` | `string` | Page title. |
 | `.Meta.Author` | `string` | Author name. |
 | `.Meta.Date` | `time.Time` | Publication date. Falls back to the file modification time if not set. |
+| `.Meta.LastMod` | `time.Time` | Last-modified time. Set from `lastmod` frontmatter (or `dateModified` JSON-LD for HTML pages); always falls back to the file modification time. |
 | `.Meta.Description` | `string` | Short description or summary. |
 | `.Meta.Tags` | `[]string` | List of tags. |
 | `.Meta.Collection` | `string` | Collection name, for grouping related pages. |
@@ -74,6 +75,7 @@ These functions are available in all layout templates.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `sortByDate` | `sortByDate pages` | Returns a new `[]Page` sorted by `Meta.Date` descending (newest first). Pages with no date sort last. |
+| `sortByLastMod` | `sortByLastMod pages` | Returns a new `[]Page` sorted by `Meta.LastMod` descending (most recently modified first). |
 | `sortByPath` | `sortByPath pages` | Returns a new `[]Page` sorted lexicographically by `URLPath` ascending. |
 | `hasTag` | `hasTag page "tag"` | Reports whether a `Page` carries the given tag. |
 | `json` | `json value` | Marshals any value to a JSON literal (`template.JS`). Useful for passing structured data to JavaScript. |

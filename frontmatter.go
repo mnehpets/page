@@ -107,18 +107,22 @@ func mapToMeta(m map[string]interface{}) Meta {
 		}
 	}
 
-	// Date: yaml.v2 returns time.Time for YAML timestamps; fall back to string.
-	switch d := m["date"].(type) {
-	case time.Time:
-		meta.Date = d
-	case string:
-		for _, layout := range []string{time.RFC3339, "2006-01-02"} {
-			if t, err := parseTime(layout, d); err == nil {
-				meta.Date = t
-				break
+	// Date / LastMod: yaml.v2 returns time.Time for YAML timestamps; fall back to string.
+	parseYAMLDate := func(v interface{}) time.Time {
+		switch d := v.(type) {
+		case time.Time:
+			return d
+		case string:
+			for _, layout := range []string{time.RFC3339, "2006-01-02"} {
+				if t, err := parseTime(layout, d); err == nil {
+					return t
+				}
 			}
 		}
+		return time.Time{}
 	}
+	meta.Date = parseYAMLDate(m["date"])
+	meta.LastMod = parseYAMLDate(m["lastmod"])
 
 	// Image: bare string or {url, alt} mapping.
 	// yaml.v2 uses map[interface{}]interface{} for nested mappings.

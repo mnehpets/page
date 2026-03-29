@@ -35,6 +35,7 @@ Page body starts here.
 | `title` | string | Page title. |
 | `author` | string | Author name. |
 | `date` | date | Publication date. Accepts `2006-01-02` or RFC 3339. Falls back to the file modification time. |
+| `lastmod` | date | Last-modified date. Accepts `2006-01-02` or RFC 3339. Always falls back to the file modification time if not set. |
 | `description` | string | Short description. |
 | `tags` | list of strings | Tags for querying via `.Site.ByTag`. |
 | `collection` | string | Collection name for `.Site.ByCollection`. |
@@ -97,7 +98,7 @@ stripped before the blob is passed to templates (so it never leaks to end users)
 | `description` | `Meta.Description` | `<meta name="description">`, `<meta property="og:description">` |
 | `keywords` | `Meta.Tags` | `<meta name="keywords">` (comma-separated string or JSON array) |
 | `datePublished` | `Meta.Date` | — |
-| `dateModified` | `Meta.Date` (fallback) | — |
+| `dateModified` | `Meta.LastMod`; also `Meta.Date` if `datePublished` is absent | — |
 | `image` | `Meta.Image` | `<meta property="og:image">`, `<meta property="og:image:alt">` |
 
 #### `"site"` namespace fields (stripped from the public JSON-LD blob)

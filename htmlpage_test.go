@@ -118,6 +118,32 @@ func TestHTMLPage_FSDateFallback(t *testing.T) {
 	if !pg.Meta().Date.Equal(modTime) {
 		t.Errorf("Date = %v, want %v", pg.Meta().Date, modTime)
 	}
+	if !pg.Meta().LastMod.Equal(modTime) {
+		t.Errorf("LastMod = %v, want %v", pg.Meta().LastMod, modTime)
+	}
+}
+
+func TestHTMLPage_DateModified(t *testing.T) {
+	src := `<!DOCTYPE html><html><head>
+<script type="application/ld+json">{
+  "site": {"layout": "default"},
+  "datePublished": "2024-01-01",
+  "dateModified": "2024-06-15"
+}</script>
+</head><body>x</body></html>`
+	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
+	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	if err != nil {
+		t.Fatalf("newHTMLPageFromFS: %v", err)
+	}
+	wantDate, _ := time.Parse("2006-01-02", "2024-01-01")
+	wantLastMod, _ := time.Parse("2006-01-02", "2024-06-15")
+	if !pg.Meta().Date.Equal(wantDate) {
+		t.Errorf("Date = %v, want %v", pg.Meta().Date, wantDate)
+	}
+	if !pg.Meta().LastMod.Equal(wantLastMod) {
+		t.Errorf("LastMod = %v, want %v", pg.Meta().LastMod, wantLastMod)
+	}
 }
 
 func TestHTMLPage_ContentAndHeadPopulated(t *testing.T) {

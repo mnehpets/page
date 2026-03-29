@@ -3,6 +3,7 @@ package page
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseFrontMatter_WithFrontMatter(t *testing.T) {
@@ -95,6 +96,33 @@ func TestParseFrontMatter_LinkTitle(t *testing.T) {
 	}
 	if meta.LinkTitle != "Short Title" {
 		t.Errorf("LinkTitle = %q, want %q", meta.LinkTitle, "Short Title")
+	}
+}
+
+func TestParseFrontMatter_LastMod(t *testing.T) {
+	src := "---\ndate: 2024-01-01\nlastmod: 2024-06-15\n---\n"
+	meta, _, err := ParseFrontMatter(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantDate, _ := time.Parse("2006-01-02", "2024-01-01")
+	wantLastMod, _ := time.Parse("2006-01-02", "2024-06-15")
+	if !meta.Date.Equal(wantDate) {
+		t.Errorf("Date = %v, want %v", meta.Date, wantDate)
+	}
+	if !meta.LastMod.Equal(wantLastMod) {
+		t.Errorf("LastMod = %v, want %v", meta.LastMod, wantLastMod)
+	}
+}
+
+func TestParseFrontMatter_LastModAbsent(t *testing.T) {
+	src := "---\ndate: 2024-01-01\n---\n"
+	meta, _, err := ParseFrontMatter(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !meta.LastMod.IsZero() {
+		t.Errorf("LastMod should be zero when not set, got %v", meta.LastMod)
 	}
 }
 

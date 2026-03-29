@@ -240,6 +240,30 @@ func SortByDate(pages []Page) []Page {
 	return out
 }
 
+// SortByLastMod returns a new slice sorted by Meta.LastMod descending (most recently modified first).
+// Pages with a zero LastMod sort after all others.
+func SortByLastMod(pages []Page) []Page {
+	out := make([]Page, len(pages))
+	copy(out, pages)
+	slices.SortStableFunc(out, func(a, b Page) int {
+		am, bm := a.Meta().LastMod, b.Meta().LastMod
+		switch {
+		case am.IsZero() && bm.IsZero():
+			return 0
+		case am.IsZero():
+			return 1
+		case bm.IsZero():
+			return -1
+		case am.After(bm):
+			return -1 // descending
+		case bm.After(am):
+			return 1
+		}
+		return 0
+	})
+	return out
+}
+
 // Paginate returns the pageNum-th page of results (1-indexed) with pageSize
 // items per page. The boolean indicates whether more pages follow.
 func Paginate(pages []Page, pageSize, pageNum int) ([]Page, bool) {

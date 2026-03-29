@@ -29,8 +29,9 @@ type Meta struct {
 	Description string
 	Image       Image
 	Slug        string
-	LinkTitle   string // short title for navigation links; falls back to Title when empty
-	ContentType string // MIME type for the HTTP response, e.g. "application/xml"; defaults to text/html
+	LinkTitle   string    // short title for navigation links; falls back to Title when empty
+	ContentType string    // MIME type for the HTTP response, e.g. "application/xml"; defaults to text/html
+	LastMod     time.Time // last-modified time; set from lastmod frontmatter, falls back to file mod time
 }
 
 // Image holds an image reference for use in Meta.

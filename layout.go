@@ -24,7 +24,8 @@ var builtinFuncs = template.FuncMap{
 		}
 		return template.JS(b), nil
 	},
-	"sortByDate": SortByDate,
+	"sortByDate":    SortByDate,
+	"sortByLastMod": SortByLastMod,
 	// hasTag reports whether p has the given tag. Use the noindex tag to
 	// exclude a page from sitemaps and other automated indexes.
 	"hasTag": func(p Page, tag string) bool {

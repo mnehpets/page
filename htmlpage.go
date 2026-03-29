@@ -303,13 +303,19 @@ func buildHTMLMeta(jsonLD map[string]any, metaTags map[string]string, titleText 
 			meta.Image = Image{URL: url, Alt: alt}
 		}
 
-		// date: datePublished preferred, dateModified as fallback
+		// date: datePublished preferred, dateModified as fallback for Date.
+		// dateModified is also stored in LastMod when present.
 		for _, key := range []string{"datePublished", "dateModified"} {
 			if s, ok := jsonLD[key].(string); ok {
 				if t := parseHTMLDate(s); !t.IsZero() {
 					meta.Date = t
 					break
 				}
+			}
+		}
+		if s, ok := jsonLD["dateModified"].(string); ok {
+			if t := parseHTMLDate(s); !t.IsZero() {
+				meta.LastMod = t
 			}
 		}
 
@@ -367,8 +373,13 @@ func buildHTMLMeta(jsonLD map[string]any, metaTags map[string]string, titleText 
 	}
 
 	// Tier 3: FS metadata.
-	if meta.Date.IsZero() && info != nil {
-		meta.Date = info.ModTime()
+	if info != nil {
+		if meta.Date.IsZero() {
+			meta.Date = info.ModTime()
+		}
+		if meta.LastMod.IsZero() {
+			meta.LastMod = info.ModTime()
+		}
 	}
 
 	return meta
