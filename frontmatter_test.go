@@ -84,6 +84,20 @@ func TestParseFrontMatter_ImageMapping(t *testing.T) {
 	}
 }
 
+func TestParseFrontMatter_LinkTitle(t *testing.T) {
+	src := "---\ntitle: A Very Long Page Title\nlinkTitle: Short Title\n---\n"
+	meta, _, err := ParseFrontMatter(strings.NewReader(src))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if meta.Title != "A Very Long Page Title" {
+		t.Errorf("Title = %q", meta.Title)
+	}
+	if meta.LinkTitle != "Short Title" {
+		t.Errorf("LinkTitle = %q, want %q", meta.LinkTitle, "Short Title")
+	}
+}
+
 func TestParseFrontMatter_NoClosingDelimiter(t *testing.T) {
 	// Opening delimiter without closing — treated as no front matter.
 	src := "---\ntitle: Orphan\nBody without closing delimiter.\n"

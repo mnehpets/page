@@ -1,6 +1,6 @@
 ---
 title: Sitemap
 layout: sitemap
-content-type: application/xml
+contentType: application/xml
 tags: [noindex]
 ---

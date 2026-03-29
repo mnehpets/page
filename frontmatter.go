@@ -83,7 +83,8 @@ func mapToMeta(m map[string]interface{}) Meta {
 	meta.Draft, _ = m["draft"].(bool)
 	meta.Description, _ = m["description"].(string)
 	meta.Slug, _ = m["slug"].(string)
-	meta.ContentType, _ = m["content-type"].(string)
+	meta.LinkTitle, _ = m["linkTitle"].(string)
+	meta.ContentType, _ = m["contentType"].(string)
 
 	// layout: "name"  or  layouts: [a, b]
 	if s, ok := m["layout"].(string); ok && s != "" {

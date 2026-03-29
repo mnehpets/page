@@ -29,6 +29,7 @@ type Meta struct {
 	Description string
 	Image       Image
 	Slug        string
+	LinkTitle   string // short title for navigation links; falls back to Title when empty
 	ContentType string // MIME type for the HTTP response, e.g. "application/xml"; defaults to text/html
 }
 

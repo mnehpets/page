@@ -31,6 +31,7 @@ Accessed as `.Meta.FieldName` in a template.
 | `.Meta.Image.URL` | `string` | URL of the representative image. |
 | `.Meta.Image.Alt` | `string` | Alt text for the representative image. |
 | `.Meta.Slug` | `string` | URL-friendly identifier. Derived from the file name if not set explicitly. |
+| `.Meta.LinkTitle` | `string` | Short title for navigation links. Falls back to `.Meta.Title` when empty. |
 | `.Meta.Layouts` | `[]string` | The layout pipeline for this page. Rarely needed inside a template. |
 | `.Meta.Draft` | `bool` | Whether this page is a draft. |
 | `.Meta.ContentType` | `string` | MIME type of the HTTP response (e.g. `application/xml`). Defaults to `text/html`. |
@@ -138,7 +139,7 @@ If no layout is declared, the template named `default` is used.
 {{ end }}
 ```
 
-The sitemap page would declare `content-type: application/xml` so the response
+The sitemap page would declare `contentType: application/xml` so the response
 is served with the correct MIME type, and `layout: sitemap` to select the template above.
 
 ### Navigation sidebar
@@ -154,7 +155,7 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   {{- if $ancestors }}
   <ol class="breadcrumb">
     {{- range $ancestors }}
-    <li><a href="{{ .URLPath }}">{{ or .Meta.Title .Meta.Slug }}</a></li>
+    <li><a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
     {{- end }}
   </ol>
   {{- end }}
@@ -164,7 +165,7 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   <ul class="siblings">
     {{- range $siblings }}{{- if not (hasTag . "noindex") }}
     <li{{if eq .URLPath $cur}} class="current"{{end}}>
-      <a href="{{ .URLPath }}">{{ or .Meta.Title .Meta.Slug }}</a>
+      <a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a>
     </li>
     {{- end }}{{- end }}
   </ul>
@@ -174,7 +175,7 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   {{- if $children }}
   <ul class="children">
     {{- range $children }}{{- if not (hasTag . "noindex") }}
-    <li><a href="{{ .URLPath }}">{{ or .Meta.Title .Meta.Slug }}</a></li>
+    <li><a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
     {{- end }}{{- end }}
   </ul>
   {{- end }}

@@ -42,7 +42,8 @@ Page body starts here.
 | `layouts` | list of strings | Multi-step layout pipeline (each step wraps the previous). |
 | `draft` | bool | If `true`, the page is excluded from `.Site.All`, `.Site.ByTag`, and `.Site.ByCollection`. |
 | `slug` | string | URL-friendly identifier. Derived from the file name if omitted. |
-| `content-type` | string | MIME type for the HTTP response (e.g. `application/xml`). Defaults to `text/html`. |
+| `linkTitle` | string | Short title for navigation links (breadcrumbs, sidebars). Falls back to `title` when empty. |
+| `contentType` | string | MIME type for the HTTP response (e.g. `application/xml`). Defaults to `text/html`. |
 | `image` | string or mapping | Representative image. Bare string sets the URL; mapping accepts `url` and `alt` keys. |
 
 ---
@@ -79,7 +80,9 @@ stripped before the blob is passed to templates (so it never leaks to end users)
     "layout": "post",
     "collection": "posts",
     "draft": false,
-    "slug": "hello-world"
+    "slug": "hello-world",
+    "linkTitle": "Hello",
+    "contentType": "text/html"
   }
 }
 </script>
@@ -106,6 +109,8 @@ stripped before the blob is passed to templates (so it never leaks to end users)
 | `collection` | `Meta.Collection` | Collection name. |
 | `slug` | `Meta.Slug` | URL-friendly identifier. |
 | `draft` | `Meta.Draft` | Exclude from site indexes when `true`. |
+| `linkTitle` | `Meta.LinkTitle` | Short title for navigation links. Falls back to `Meta.Title` when empty. |
+| `contentType` | `Meta.ContentType` | MIME type for the HTTP response (e.g. `application/xml`). Defaults to `text/html`. |
 
 ### Recognised `<meta>` tags
 

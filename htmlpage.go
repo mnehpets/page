@@ -329,6 +329,8 @@ func buildHTMLMeta(jsonLD map[string]any, metaTags map[string]string, titleText 
 			meta.Collection, _ = siteLD["collection"].(string)
 			meta.Slug, _ = siteLD["slug"].(string)
 			meta.Draft, _ = siteLD["draft"].(bool)
+			meta.LinkTitle, _ = siteLD["linkTitle"].(string)
+			meta.ContentType, _ = siteLD["contentType"].(string)
 		}
 	}
 

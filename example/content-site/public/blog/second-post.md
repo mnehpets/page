@@ -1,5 +1,6 @@
 ---
 title: On Go Interfaces
+linkTitle: Go Interfaces
 date: 2026-03-15
 tags: [go]
 collection: blog
