@@ -16,6 +16,13 @@ type Site interface {
 	All() []Page
 	ByTag(tag string) []Page
 	ByCollection(name string) []Page
+	// AncestorsOf returns the pages on the path from the root down to — but not
+	// including — urlPath, ordered from shallowest to deepest (root first).
+	// Pages for intermediate URL paths absent from the site index are skipped.
+	AncestorsOf(urlPath string) []Page
+	// ChildrenOf returns pages that are exactly one path segment deeper than
+	// urlPath, i.e. pages whose parent URL path equals urlPath.
+	ChildrenOf(urlPath string) []Page
 	Config() SiteConfig
 	FileRenderer() endpoint.FileRendererHook
 	DirRenderer() endpoint.FileRendererHook
@@ -137,6 +144,75 @@ func (s *fsSite) ByCollection(name string) []Page {
 			out = append(out, p)
 		}
 	}
+	return out
+}
+
+// AncestorsOf returns the pages on the path from the root down to (but not
+// including) urlPath, ordered root-first. Intermediate paths absent from the
+// site index are skipped silently.
+func (s *fsSite) AncestorsOf(urlPath string) []Page {
+	var paths []string
+	cur := urlPath
+	for {
+		par := parentURLPath(cur)
+		if par == "" {
+			break
+		}
+		paths = append(paths, par)
+		cur = par
+	}
+	// paths is child-to-root; reverse to root-first.
+	for i, j := 0, len(paths)-1; i < j; i, j = i+1, j-1 {
+		paths[i], paths[j] = paths[j], paths[i]
+	}
+	var out []Page
+	for _, p := range paths {
+		if pg, ok := s.pages[p]; ok {
+			out = append(out, pg)
+		}
+	}
+	return out
+}
+
+// ChildrenOf returns pages that are exactly one path segment deeper than
+// urlPath. Draft pages are excluded unless WithIncludeDrafts was used.
+func (s *fsSite) ChildrenOf(urlPath string) []Page {
+	var out []Page
+	for _, p := range s.pages {
+		if !s.drafts && p.Meta().Draft {
+			continue
+		}
+		if parentURLPath(p.URLPath()) == urlPath {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// parentURLPath returns the parent URL path of urlPath.
+//
+//	parentURLPath("/a/b/") → "/a/"
+//	parentURLPath("/a/")   → "/"
+//	parentURLPath("/")     → ""
+func parentURLPath(urlPath string) string {
+	if urlPath == "/" {
+		return ""
+	}
+	trimmed := strings.TrimSuffix(urlPath, "/")
+	i := strings.LastIndex(trimmed, "/")
+	if i < 0 {
+		return "/"
+	}
+	return trimmed[:i+1]
+}
+
+// SortByPath returns a new slice sorted lexicographically by URLPath ascending.
+func SortByPath(pages []Page) []Page {
+	out := make([]Page, len(pages))
+	copy(out, pages)
+	slices.SortStableFunc(out, func(a, b Page) int {
+		return strings.Compare(a.URLPath(), b.URLPath())
+	})
 	return out
 }
 

@@ -9,8 +9,41 @@
   {{.Head}}
 </head>
 <body>
-  <nav><a href="/">Home</a> · <a href="/blog/">Blog</a></nav>
-  <main>{{.Content}}</main>
+  <div class="layout">
+    <nav class="sidebar">
+      {{- $cur := .Request.URL.Path }}
+
+      {{- $ancestors := .Site.AncestorsOf $cur }}
+      {{- if $ancestors }}
+      <ol class="breadcrumb">
+        {{- range $ancestors }}
+        <li><a href="{{ .URLPath }}">{{ or .Meta.Title .Meta.Slug }}</a></li>
+        {{- end }}
+      </ol>
+      {{- end }}
+
+      {{- $siblings := sortByPath (.Site.ChildrenOf (parentPath $cur)) }}
+      {{- if $siblings }}
+      <ul class="nav-list">
+        {{- range $siblings }}{{- if not (hasTag . "noindex") }}
+        <li{{if eq .URLPath $cur}} class="current"{{end}}>
+          <a href="{{ .URLPath }}">{{ or .Meta.Title .Meta.Slug }}</a>
+        </li>
+        {{- end }}{{- end }}
+      </ul>
+      {{- end }}
+
+      {{- $children := sortByPath (.Site.ChildrenOf $cur) }}
+      {{- if $children }}
+      <ul class="nav-list nav-children">
+        {{- range $children }}{{- if not (hasTag . "noindex") }}
+        <li><a href="{{ .URLPath }}">{{ or .Meta.Title .Meta.Slug }}</a></li>
+        {{- end }}{{- end }}
+      </ul>
+      {{- end }}
+    </nav>
+    <main>{{.Content}}</main>
+  </div>
 </body>
 </html>
 {{end}}

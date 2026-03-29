@@ -39,6 +39,14 @@ var builtinFuncs = template.FuncMap{
 	// escaping. Use only with trusted, statically-known strings — never with
 	// user-supplied content.
 	"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+	// sortByPath returns a new []Page sorted lexicographically by URLPath.
+	"sortByPath": SortByPath,
+	// parentPath returns the parent URL path of urlPath.
+	// parentPath("/a/b/") → "/a/"
+	// parentPath("/a/")   → "/"
+	// parentPath("/")     → ""
+	// Pure string operation; does not consult the site index.
+	"parentPath": parentURLPath,
 }
 
 // Layout wraps a parsed html/template set containing one or more named layout

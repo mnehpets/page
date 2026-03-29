@@ -259,6 +259,219 @@ func TestPaginate(t *testing.T) {
 	}
 }
 
+func makeNavSiteFS() fstest.MapFS {
+	return fstest.MapFS{
+		"index.md":           {Data: []byte("---\ntitle: Home\n---\n")},
+		"about.md":           {Data: []byte("---\ntitle: About\n---\n")},
+		"blog/index.md":      {Data: []byte("---\ntitle: Blog\n---\n")},
+		"blog/post-a.md":     {Data: []byte("---\ntitle: Post A\n---\n")},
+		"blog/post-b.md":     {Data: []byte("---\ntitle: Post B\n---\n")},
+		"blog/drafts/index.md": {Data: []byte("---\ntitle: Drafts\ndraft: true\n---\n")},
+		"blog/go/index.md":   {Data: []byte("---\ntitle: Go Posts\n---\n")},
+		"blog/go/intro.md":   {Data: []byte("---\ntitle: Intro\n---\n")},
+	}
+}
+
+func TestAncestorsOf(t *testing.T) {
+	fsys := makeNavSiteFS()
+	site, err := NewSite(fsys)
+	if err != nil {
+		t.Fatalf("NewSite: %v", err)
+	}
+
+	t.Run("deep path has root, blog, and go ancestors", func(t *testing.T) {
+		ancestors := site.AncestorsOf("/blog/go/intro.md")
+		if len(ancestors) != 3 {
+			t.Fatalf("want 3 ancestors, got %d: %v", len(ancestors), urlPaths(ancestors))
+		}
+		if ancestors[0].URLPath() != "/" {
+			t.Errorf("ancestors[0] = %q, want /", ancestors[0].URLPath())
+		}
+		if ancestors[1].URLPath() != "/blog/" {
+			t.Errorf("ancestors[1] = %q, want /blog/", ancestors[1].URLPath())
+		}
+		if ancestors[2].URLPath() != "/blog/go/" {
+			t.Errorf("ancestors[2] = %q, want /blog/go/", ancestors[2].URLPath())
+		}
+	})
+
+	t.Run("root-first ordering", func(t *testing.T) {
+		ancestors := site.AncestorsOf("/blog/post-a.md")
+		if len(ancestors) != 2 {
+			t.Fatalf("want 2 ancestors (/ and /blog/), got %d", len(ancestors))
+		}
+		if ancestors[0].URLPath() != "/" {
+			t.Errorf("ancestors[0] = %q, want /", ancestors[0].URLPath())
+		}
+		if ancestors[1].URLPath() != "/blog/" {
+			t.Errorf("ancestors[1] = %q, want /blog/", ancestors[1].URLPath())
+		}
+	})
+
+	t.Run("intermediate missing path is skipped", func(t *testing.T) {
+		// /blog/go/ exists but /blog/go/intro.md's /blog/ is present, /blog/go/ also present.
+		// Test with a path whose intermediate dir has no index page.
+		fsys2 := fstest.MapFS{
+			"index.md":          {Data: []byte("---\ntitle: Home\n---\n")},
+			"docs/guide/page.md": {Data: []byte("---\ntitle: Page\n---\n")},
+			// /docs/ has no index page — should be skipped
+		}
+		s2, err := NewSite(fsys2)
+		if err != nil {
+			t.Fatalf("NewSite: %v", err)
+		}
+		ancestors := s2.AncestorsOf("/docs/guide/page.md")
+		// Only / is in the index; /docs/ is absent.
+		if len(ancestors) != 1 {
+			t.Fatalf("want 1 ancestor (only /), got %d: %v", len(ancestors), urlPaths(ancestors))
+		}
+		if ancestors[0].URLPath() != "/" {
+			t.Errorf("ancestor = %q, want /", ancestors[0].URLPath())
+		}
+	})
+
+	t.Run("root has no ancestors", func(t *testing.T) {
+		ancestors := site.AncestorsOf("/")
+		if len(ancestors) != 0 {
+			t.Errorf("root ancestors: want 0, got %d", len(ancestors))
+		}
+	})
+
+	t.Run("direct child of root has no ancestors in index-less site", func(t *testing.T) {
+		fsys3 := fstest.MapFS{
+			"page.md": {Data: []byte("---\ntitle: Page\n---\n")},
+		}
+		s3, err := NewSite(fsys3)
+		if err != nil {
+			t.Fatalf("NewSite: %v", err)
+		}
+		ancestors := s3.AncestorsOf("/page.md")
+		if len(ancestors) != 0 {
+			t.Errorf("want 0 ancestors when / absent, got %d", len(ancestors))
+		}
+	})
+}
+
+func TestChildrenOf(t *testing.T) {
+	fsys := makeNavSiteFS()
+	site, err := NewSite(fsys)
+	if err != nil {
+		t.Fatalf("NewSite: %v", err)
+	}
+
+	t.Run("children of root", func(t *testing.T) {
+		children := site.ChildrenOf("/")
+		paths := urlPaths(children)
+		if !containsPath(paths, "/about.md") {
+			t.Errorf("expected /about.md in children of /: %v", paths)
+		}
+		if !containsPath(paths, "/blog/") {
+			t.Errorf("expected /blog/ in children of /: %v", paths)
+		}
+		// Root index is not a child of itself.
+		if containsPath(paths, "/") {
+			t.Errorf("root should not appear as its own child: %v", paths)
+		}
+	})
+
+	t.Run("children of blog", func(t *testing.T) {
+		children := site.ChildrenOf("/blog/")
+		paths := urlPaths(children)
+		if !containsPath(paths, "/blog/post-a.md") {
+			t.Errorf("expected /blog/post-a.md: %v", paths)
+		}
+		if !containsPath(paths, "/blog/post-b.md") {
+			t.Errorf("expected /blog/post-b.md: %v", paths)
+		}
+		if !containsPath(paths, "/blog/go/") {
+			t.Errorf("expected /blog/go/: %v", paths)
+		}
+		// Grandchild /blog/go/intro.md is not a direct child.
+		if containsPath(paths, "/blog/go/intro.md") {
+			t.Errorf("/blog/go/intro.md should not be a direct child of /blog/: %v", paths)
+		}
+	})
+
+	t.Run("draft pages excluded", func(t *testing.T) {
+		children := site.ChildrenOf("/blog/")
+		for _, p := range children {
+			if p.Meta().Draft {
+				t.Errorf("draft page %q should not appear in ChildrenOf", p.URLPath())
+			}
+		}
+	})
+
+	t.Run("draft pages included with WithIncludeDrafts", func(t *testing.T) {
+		s2, err := NewSite(fsys, WithIncludeDrafts())
+		if err != nil {
+			t.Fatalf("NewSite: %v", err)
+		}
+		children := s2.ChildrenOf("/blog/")
+		paths := urlPaths(children)
+		if !containsPath(paths, "/blog/drafts/") {
+			t.Errorf("expected /blog/drafts/ with WithIncludeDrafts: %v", paths)
+		}
+	})
+
+	t.Run("leaf page has no children", func(t *testing.T) {
+		children := site.ChildrenOf("/blog/post-a.md")
+		if len(children) != 0 {
+			t.Errorf("leaf page should have no children, got %v", urlPaths(children))
+		}
+	})
+}
+
+func TestParentURLPath(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"/a/b/", "/a/"},
+		{"/a/", "/"},
+		{"/", ""},
+		{"/a/b.md", "/a/"},
+		{"/blog/hello-world.md", "/blog/"},
+	}
+	for _, c := range cases {
+		got := parentURLPath(c.input)
+		if got != c.want {
+			t.Errorf("parentURLPath(%q) = %q, want %q", c.input, got, c.want)
+		}
+	}
+}
+
+func TestSortByPath(t *testing.T) {
+	pages := []Page{
+		&markdownPage{urlPath: "/c/"},
+		&markdownPage{urlPath: "/a/"},
+		&markdownPage{urlPath: "/b/"},
+	}
+	sorted := SortByPath(pages)
+	want := []string{"/a/", "/b/", "/c/"}
+	for i, p := range sorted {
+		if p.URLPath() != want[i] {
+			t.Errorf("sorted[%d] = %q, want %q", i, p.URLPath(), want[i])
+		}
+	}
+}
+
+func urlPaths(pages []Page) []string {
+	paths := make([]string, len(pages))
+	for i, p := range pages {
+		paths[i] = p.URLPath()
+	}
+	return paths
+}
+
+func containsPath(paths []string, target string) bool {
+	for _, p := range paths {
+		if p == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDeriveSlug(t *testing.T) {
 	cases := []struct {
 		urlPath string

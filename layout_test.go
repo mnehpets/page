@@ -77,3 +77,56 @@ func TestNewLayout_ParseError(t *testing.T) {
 		t.Error("expected error for invalid template syntax")
 	}
 }
+
+func TestBuiltinParentPath(t *testing.T) {
+	fsys := fstest.MapFS{
+		"tmpl.html": {Data: []byte(`{{define "t"}}{{parentPath .}}{{end}}`)},
+	}
+	l, err := NewLayout(fsys, "tmpl.html")
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	tmpl := l.Template()
+
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"/a/b/", "/a/"},
+		{"/a/", "/"},
+		{"/", ""},
+		{"/a/b.md", "/a/"},
+	}
+	for _, c := range cases {
+		var buf strings.Builder
+		if err := tmpl.ExecuteTemplate(&buf, "t", c.input); err != nil {
+			t.Fatalf("ExecuteTemplate(%q): %v", c.input, err)
+		}
+		if got := buf.String(); got != c.want {
+			t.Errorf("parentPath(%q) = %q, want %q", c.input, got, c.want)
+		}
+	}
+}
+
+func TestBuiltinSortByPath(t *testing.T) {
+	fsys := fstest.MapFS{
+		"tmpl.html": {Data: []byte(`{{define "t"}}{{range sortByPath .}}{{.URLPath}}{{end}}{{end}}`)},
+	}
+	l, err := NewLayout(fsys, "tmpl.html")
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+
+	pages := []Page{
+		&markdownPage{urlPath: "/c/"},
+		&markdownPage{urlPath: "/a/"},
+		&markdownPage{urlPath: "/b/"},
+	}
+	var buf strings.Builder
+	if err := l.Template().ExecuteTemplate(&buf, "t", pages); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	if got, want := buf.String(), "/a//b//c/"; got != want {
+		t.Errorf("sortByPath output = %q, want %q", got, want)
+	}
+}
