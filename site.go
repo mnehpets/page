@@ -381,7 +381,7 @@ func newPageFromFS(urlPath string, fsys fs.FS, filePath string) (Page, error) {
 	switch ext := fileExt(filePath); ext {
 	case ".md":
 		return newMarkdownPageFromFS(urlPath, fsys, filePath)
-	case ".html", ".htm":
+	case ".html", ".htm", ".xml":
 		pg, err := newHTMLPageFromFS(urlPath, fsys, filePath)
 		if err != nil || pg == nil {
 			return nil, err
@@ -402,7 +402,7 @@ func deriveSlug(urlPath string) string {
 	}
 	ext := path.Ext(base)
 	switch ext {
-	case ".md", ".html", ".htm":
+	case ".md", ".html", ".htm", ".xml":
 		return strings.TrimSuffix(base, ext)
 	}
 	return base

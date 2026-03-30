@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script type="application/ld+json">
+{
+  "name": "Blog Feed",
+  "keywords": ["noindex"],
+  "site": {
+    "layout": "atomfeed",
+    "contentType": "application/atom+xml"
+  }
+}
+</script>
+</head>
+<body></body>
+</html>
