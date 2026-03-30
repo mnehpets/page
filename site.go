@@ -64,10 +64,11 @@ func WithConfig(cfg SiteConfig) SiteOption {
 }
 
 type fsSite struct {
-	pages  map[string]Page // urlPath → Page (all pages, including drafts)
-	layout *Layout
-	drafts bool       // include drafts in query results
-	config SiteConfig
+	pages    map[string]Page     // urlPath → Page (all pages, including drafts)
+	children map[string][]Page   // parent urlPath → direct child pages (all, including drafts)
+	layout   *Layout
+	drafts   bool // include drafts in query results
+	config   SiteConfig
 }
 
 // NewSite walks fsys, parses all .md, .html, and .htm files, and returns a
@@ -93,7 +94,9 @@ func NewSite(fsys fs.FS, opts ...SiteOption) (Site, error) {
 		return nil, err
 	}
 
-	return &fsSite{pages: pages, layout: layout, drafts: cfg.includeDrafts, config: cfg.config}, nil
+	children := buildChildIndex(pages)
+
+	return &fsSite{pages: pages, children: children, layout: layout, drafts: cfg.includeDrafts, config: cfg.config}, nil
 }
 
 // Layout returns the site's layout, which may be nil if no _layouts/ directory
@@ -177,16 +180,33 @@ func (s *fsSite) AncestorsOf(urlPath string) []Page {
 // ChildrenOf returns pages that are exactly one path segment deeper than
 // urlPath. Draft pages are excluded unless WithIncludeDrafts was used.
 func (s *fsSite) ChildrenOf(urlPath string) []Page {
-	var out []Page
-	for _, p := range s.pages {
-		if !s.drafts && p.Meta().Draft {
-			continue
-		}
-		if parentURLPath(p.URLPath()) == urlPath {
+	all := s.children[urlPath]
+	if s.drafts {
+		out := make([]Page, len(all))
+		copy(out, all)
+		return out
+	}
+	out := make([]Page, 0, len(all))
+	for _, p := range all {
+		if !p.Meta().Draft {
 			out = append(out, p)
 		}
 	}
 	return out
+}
+
+// buildChildIndex builds a parent-urlPath → direct-children map from the page
+// index. All pages (including drafts) are stored; draft filtering is applied at
+// query time.
+func buildChildIndex(pages map[string]Page) map[string][]Page {
+	children := make(map[string][]Page)
+	for urlPath, pg := range pages {
+		parent := parentURLPath(urlPath)
+		if parent != "" {
+			children[parent] = append(children[parent], pg)
+		}
+	}
+	return children
 }
 
 // parentURLPath returns the parent URL path of urlPath.
