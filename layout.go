@@ -26,10 +26,10 @@ var builtinFuncs = template.FuncMap{
 	},
 	"sortByDate":    SortByDate,
 	"sortByLastMod": SortByLastMod,
-	// hasTag reports whether p has the given tag. Use the noindex tag to
+	// hasTag reports whether m has the given tag. Use the noindex tag to
 	// exclude a page from sitemaps and other automated indexes.
-	"hasTag": func(p Page, tag string) bool {
-		for _, t := range p.Meta().Tags {
+	"hasTag": func(m Meta, tag string) bool {
+		for _, t := range m.Tags {
 			if t == tag {
 				return true
 			}

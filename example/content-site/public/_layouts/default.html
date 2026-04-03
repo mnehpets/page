@@ -25,7 +25,7 @@
       {{- $siblings := sortByPath (.Site.ChildrenOf (parentPath $cur)) }}
       {{- if $siblings }}
       <ul class="nav-list">
-        {{- range $siblings }}{{- if not (hasTag . "noindex") }}
+        {{- range $siblings }}{{- if not (hasTag .Meta "noindex") }}
         <li{{if eq .URLPath $cur}} class="current"{{end}}>
           <a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a>
         </li>
@@ -36,7 +36,7 @@
       {{- $children := sortByPath (.Site.ChildrenOf $cur) }}
       {{- if $children }}
       <ul class="nav-list nav-children">
-        {{- range $children }}{{- if not (hasTag . "noindex") }}
+        {{- range $children }}{{- if not (hasTag .Meta "noindex") }}
         <li><a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
         {{- end }}{{- end }}
       </ul>

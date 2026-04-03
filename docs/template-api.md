@@ -77,7 +77,7 @@ These functions are available in all layout templates.
 | `sortByDate` | `sortByDate pages` | Returns a new `[]Page` sorted by `Meta.Date` descending (newest first). Pages with no date sort last. |
 | `sortByLastMod` | `sortByLastMod pages` | Returns a new `[]Page` sorted by `Meta.LastMod` descending (most recently modified first). |
 | `sortByPath` | `sortByPath pages` | Returns a new `[]Page` sorted lexicographically by `URLPath` ascending. |
-| `hasTag` | `hasTag page "tag"` | Reports whether a `Page` carries the given tag. |
+| `hasTag` | `hasTag meta "tag"` | Reports whether a `Meta` carries the given tag. Use `.Meta` when ranging over pages, or `.Meta` at the top level. |
 | `json` | `json value` | Marshals any value to a JSON literal (`template.JS`). Useful for passing structured data to JavaScript. |
 | `safeHTML` | `safeHTML "string"` | Marks a string as safe HTML, bypassing contextual escaping. Use only with trusted, statically-known strings — never with user input. |
 | `parentPath` | `parentPath "/a/b/"` | Returns the parent URL path. `parentPath("/a/b/")` → `"/a/"`, `parentPath("/a/")` → `"/"`, `parentPath("/")` → `""`. Pure string operation; does not consult the site index. |
@@ -131,7 +131,7 @@ If no layout is declared, the template named `default` is used.
 {{ safeHTML "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }}
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {{- range .Site.ByTag "mime:text/html" }}
-{{- if not (hasTag . "noindex") }}
+{{- if not (hasTag .Meta "noindex") }}
   <url>
     <loc>{{ printf "%s%s" $.Config.BaseURL .URLPath }}</loc>
   </url>
@@ -165,7 +165,7 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   {{- $siblings := sortByPath (.Site.ChildrenOf (parentPath $cur)) }}
   {{- if $siblings }}
   <ul class="siblings">
-    {{- range $siblings }}{{- if not (hasTag . "noindex") }}
+    {{- range $siblings }}{{- if not (hasTag .Meta "noindex") }}
     <li{{if eq .URLPath $cur}} class="current"{{end}}>
       <a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a>
     </li>
@@ -176,7 +176,7 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   {{- $children := sortByPath (.Site.ChildrenOf $cur) }}
   {{- if $children }}
   <ul class="children">
-    {{- range $children }}{{- if not (hasTag . "noindex") }}
+    {{- range $children }}{{- if not (hasTag .Meta "noindex") }}
     <li><a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
     {{- end }}{{- end }}
   </ul>

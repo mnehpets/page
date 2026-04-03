@@ -7,7 +7,7 @@
   {{- with index (sortByDate (.Site.ByCollection "blog")) 0}}
   <updated>{{.Meta.Date.Format "2006-01-02T15:04:05Z"}}</updated>
   {{- end}}
-  {{- range sortByDate (.Site.ByCollection "blog")}}{{if not (hasTag . "noindex")}}
+  {{- range sortByDate (.Site.ByCollection "blog")}}{{if not (hasTag .Meta "noindex")}}
   <entry>
     <title>{{.Meta.Title}}</title>
     <link href="{{$.Config.BaseURL}}{{.URLPath}}"/>
