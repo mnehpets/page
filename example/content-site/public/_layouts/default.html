@@ -17,7 +17,7 @@
       {{- if $ancestors }}
       <ol class="breadcrumb">
         {{- range $ancestors }}
-        <li><a href="{{ $.Href .SitePath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
+        <li><a href="{{ $.Href . }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
         {{- end }}
       </ol>
       {{- end }}
