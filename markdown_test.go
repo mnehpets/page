@@ -26,7 +26,7 @@ func TestMarkdownPage_FrontMatterParsed(t *testing.T) {
 		"blog/post.md": {Data: []byte(src)},
 	}
 
-	pg, err := newMarkdownPageFromFS("/blog/post.md", fsys, "blog/post.md")
+	pg, err := newMarkdownPageFromFS("blog/post.md", fsys, "blog/post.md")
 	if err != nil {
 		t.Fatalf("newMarkdownPageFromFS: %v", err)
 	}
@@ -37,8 +37,8 @@ func TestMarkdownPage_FrontMatterParsed(t *testing.T) {
 	if pg.Meta().Author != "Bob" {
 		t.Errorf("Author = %q", pg.Meta().Author)
 	}
-	if pg.URLPath() != "/blog/post.md" {
-		t.Errorf("URLPath = %q", pg.URLPath())
+	if pg.SitePath() != "blog/post.md" {
+		t.Errorf("SitePath = %q", pg.SitePath())
 	}
 }
 
@@ -49,7 +49,7 @@ func TestMarkdownPage_BodyRenderedViaGoldmark(t *testing.T) {
 	}
 	layout := makeTestLayout(t, `{{define "default"}}{{.Content}}{{end}}`)
 
-	pg, err := newMarkdownPageFromFS("/post.md", fsys, "post.md")
+	pg, err := newMarkdownPageFromFS("post.md", fsys, "post.md")
 	if err != nil {
 		t.Fatalf("newMarkdownPageFromFS: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestMarkdownPage_FencedCodeBlockLanguageClass(t *testing.T) {
 	}
 	layout := makeTestLayout(t, `{{define "default"}}{{.Content}}{{end}}`)
 
-	pg, err := newMarkdownPageFromFS("/code.md", fsys, "code.md")
+	pg, err := newMarkdownPageFromFS("code.md", fsys, "code.md")
 	if err != nil {
 		t.Fatalf("newMarkdownPageFromFS: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestMarkdownPage_RenderWritesLayoutOutput(t *testing.T) {
 	}
 	layout := makeTestLayout(t, `{{define "default"}}<html><head><title>{{.Meta.Title}}</title></head><body>{{.Content}}</body></html>{{end}}`)
 
-	pg, err := newMarkdownPageFromFS("/page.md", fsys, "page.md")
+	pg, err := newMarkdownPageFromFS("page.md", fsys, "page.md")
 	if err != nil {
 		t.Fatalf("newMarkdownPageFromFS: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestMarkdownPage_NilLayoutReturnsError(t *testing.T) {
 	fsys := fstest.MapFS{
 		"post.md": {Data: []byte("Hello.\n")},
 	}
-	pg, err := newMarkdownPageFromFS("/post.md", fsys, "post.md")
+	pg, err := newMarkdownPageFromFS("post.md", fsys, "post.md")
 	if err != nil {
 		t.Fatalf("newMarkdownPageFromFS: %v", err)
 	}

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Site interface
-The system SHALL define a `Site` interface with the following query methods: `Get(urlPath string) (Page, bool)`, `All() []Page`, `ByTag(tag string) []Page`, `ByCollection(name string) []Page`. The object exposed to `html/template` via `RenderContext.Site` MUST be the `Site` interface, not a concrete type.
+The system SHALL define a `Site` interface with the following query methods: `Get(sitePath string) (Page, bool)`, `All() []Page`, `ByTag(tag string) []Page`, `ByCollection(name string) []Page`. The object exposed to `html/template` via `RenderContext.Site` MUST be the `Site` interface, not a concrete type.
 
 #### Scenario: Get returns page by URL path
 - **WHEN** `site.Get("/blog/hello-world.md")` is called and a page is registered at that path
@@ -30,7 +30,7 @@ The system SHALL provide `NewSite(fsys fs.FS, opts ...SiteOption) (Site, error)`
 
 #### Scenario: Site built from FS
 - **WHEN** `NewSite` is called with an FS containing `.md` and `.html` files
-- **THEN** each file is parsed, a page is created, and the page is reachable via `site.Get(urlPath)`
+- **THEN** each file is parsed, a page is created, and the page is reachable via `site.Get(sitePath)`
 
 #### Scenario: URL path derived from file path
 - **WHEN** a file exists at `blog/hello-world.md` in the FS
@@ -68,7 +68,7 @@ The system SHALL use a two-phase approach in the FS-backed implementation: metad
 ---
 
 ### Requirement: Draft filtering
-The system SHALL exclude draft pages from `All()`, `ByTag()`, and `ByCollection()` results. Draft pages MUST still be retrievable via `site.Get(urlPath)`.
+The system SHALL exclude draft pages from `All()`, `ByTag()`, and `ByCollection()` results. Draft pages MUST still be retrievable via `site.Get(sitePath)`.
 
 #### Scenario: Draft page excluded from All
 - **WHEN** a page has `Meta.Draft == true`
@@ -76,7 +76,7 @@ The system SHALL exclude draft pages from `All()`, `ByTag()`, and `ByCollection(
 
 #### Scenario: Draft page retrievable by URL
 - **WHEN** a page has `Meta.Draft == true`
-- **THEN** `site.Get(urlPath)` returns it with `true`
+- **THEN** `site.Get(sitePath)` returns it with `true`
 
 ---
 

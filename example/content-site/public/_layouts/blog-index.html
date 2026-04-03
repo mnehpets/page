@@ -4,7 +4,7 @@
   {{range sortByDate (.Site.ByCollection "blog")}}
   <li>
     <time datetime="{{.Meta.Date.Format "2006-01-02"}}">{{.Meta.Date.Format "2 Jan 2006"}}</time>
-    — <a href="{{.URLPath}}">{{.Meta.Title}}</a>
+    — <a href="{{ $.Href . }}">{{.Meta.Title}}</a>
     {{with .Meta.Description}}<p>{{.}}</p>{{end}}
   </li>
   {{end}}

@@ -12,17 +12,17 @@ import (
 
 // Site indexes pages by URL path and exposes query methods for use in templates.
 type Site interface {
-	Get(urlPath string) (Page, bool)
+	Get(sitePath string) (Page, bool)
 	All() []Page
 	ByTag(tag string) []Page
 	ByCollection(name string) []Page
 	// AncestorsOf returns the pages on the path from the root down to — but not
-	// including — urlPath, ordered from shallowest to deepest (root first).
-	// Pages for intermediate URL paths absent from the site index are skipped.
-	AncestorsOf(urlPath string) []Page
+	// including — sitePath, ordered from shallowest to deepest (root first).
+	// Pages for intermediate site paths absent from the site index are skipped.
+	AncestorsOf(sitePath string) []Page
 	// ChildrenOf returns pages that are exactly one path segment deeper than
-	// urlPath, i.e. pages whose parent URL path equals urlPath.
-	ChildrenOf(urlPath string) []Page
+	// sitePath, i.e. pages whose parent site path equals sitePath.
+	ChildrenOf(sitePath string) []Page
 	Config() SiteConfig
 	FileRenderer() endpoint.FileRendererHook
 	DirRenderer() endpoint.FileRendererHook
@@ -64,8 +64,8 @@ func WithConfig(cfg SiteConfig) SiteOption {
 }
 
 type fsSite struct {
-	pages    map[string]Page     // urlPath → Page (all pages, including drafts)
-	children map[string][]Page   // parent urlPath → direct child pages (all, including drafts)
+	pages    map[string]Page   // sitePath → Page (all pages, including drafts)
+	children map[string][]Page // parent sitePath → direct child pages (all, including drafts)
 	layout   *Layout
 	drafts   bool // include drafts in query results
 	config   SiteConfig
@@ -105,8 +105,8 @@ func (s *fsSite) Layout() *Layout { return s.layout }
 
 func (s *fsSite) Config() SiteConfig { return s.config }
 
-func (s *fsSite) Get(urlPath string) (Page, bool) {
-	p, ok := s.pages[urlPath]
+func (s *fsSite) Get(sitePath string) (Page, bool) {
+	p, ok := s.pages[sitePath]
 	return p, ok
 }
 
@@ -151,14 +151,14 @@ func (s *fsSite) ByCollection(name string) []Page {
 }
 
 // AncestorsOf returns the pages on the path from the root down to (but not
-// including) urlPath, ordered root-first. Intermediate paths absent from the
+// including) sitePath, ordered root-first. Intermediate paths absent from the
 // site index are skipped silently.
-func (s *fsSite) AncestorsOf(urlPath string) []Page {
+func (s *fsSite) AncestorsOf(sitePath string) []Page {
 	var paths []string
-	cur := urlPath
+	cur := sitePath
 	for {
-		par := parentURLPath(cur)
-		if par == "" {
+		par := parentPath(cur)
+		if par == "" || par == cur {
 			break
 		}
 		paths = append(paths, par)
@@ -178,9 +178,9 @@ func (s *fsSite) AncestorsOf(urlPath string) []Page {
 }
 
 // ChildrenOf returns pages that are exactly one path segment deeper than
-// urlPath. Draft pages are excluded unless WithIncludeDrafts was used.
-func (s *fsSite) ChildrenOf(urlPath string) []Page {
-	all := s.children[urlPath]
+// sitePath. Draft pages are excluded unless WithIncludeDrafts was used.
+func (s *fsSite) ChildrenOf(sitePath string) []Page {
+	all := s.children[sitePath]
 	if s.drafts {
 		out := make([]Page, len(all))
 		copy(out, all)
@@ -195,13 +195,13 @@ func (s *fsSite) ChildrenOf(urlPath string) []Page {
 	return out
 }
 
-// buildChildIndex builds a parent-urlPath → direct-children map from the page
+// buildChildIndex builds a parent-sitePath → direct-children map from the page
 // index. All pages (including drafts) are stored; draft filtering is applied at
 // query time.
 func buildChildIndex(pages map[string]Page) map[string][]Page {
 	children := make(map[string][]Page)
-	for urlPath, pg := range pages {
-		parent := parentURLPath(urlPath)
+	for sitePath, pg := range pages {
+		parent := parentPath(sitePath)
 		if parent != "" {
 			children[parent] = append(children[parent], pg)
 		}
@@ -209,29 +209,97 @@ func buildChildIndex(pages map[string]Page) map[string][]Page {
 	return children
 }
 
-// parentURLPath returns the parent URL path of urlPath.
+// parentPath returns the parent of p in the site-relative path scheme.
 //
-//	parentURLPath("/a/b/") → "/a/"
-//	parentURLPath("/a/")   → "/"
-//	parentURLPath("/")     → ""
-func parentURLPath(urlPath string) string {
-	if urlPath == "/" {
+//	parentPath("a/b/c.md") → "a/b"
+//	parentPath("a/b")      → "a"
+//	parentPath("a.md")     → "."
+//	parentPath(".")        → ""
+func parentPath(p string) string {
+	if p == "." {
 		return ""
 	}
-	trimmed := strings.TrimSuffix(urlPath, "/")
-	i := strings.LastIndex(trimmed, "/")
-	if i < 0 {
-		return "/"
-	}
-	return trimmed[:i+1]
+	return path.Dir(p)
 }
 
-// SortByPath returns a new slice sorted lexicographically by URLPath ascending.
+// relURL returns a relative URL from the page at fromPath to the page at
+// toPath. Both are site-relative paths (as returned by Page.SitePath).
+// Directory pages (no file extension, including the root ".") are linked with
+// a trailing slash so the browser resolves further relative links correctly.
+func relURL(fromPath, toPath string) string {
+	// Directory pages (no extension, root ".") are their own directory.
+	// File pages use their containing directory.
+	var fromDir string
+	if isDirPath(fromPath) {
+		fromDir = fromPath
+	} else {
+		fromDir = path.Dir(fromPath)
+	}
+
+	fromSegs := splitPath(fromDir)
+	toSegs := splitPath(toPath)
+
+	// Find length of common prefix.
+	n := min(len(fromSegs), len(toSegs))
+	common := 0
+	for common < n && fromSegs[common] == toSegs[common] {
+		common++
+	}
+
+	// Go up from fromDir to the common ancestor, then down to toPath.
+	parts := make([]string, 0, len(fromSegs)-common+len(toSegs)-common)
+	for range fromSegs[common:] {
+		parts = append(parts, "..")
+	}
+	parts = append(parts, toSegs[common:]...)
+
+	rel := strings.Join(parts, "/")
+	if rel == "" {
+		rel = "."
+	}
+	if isDirPath(toPath) {
+		rel += "/"
+	}
+	return rel
+}
+
+// absURL joins a canonical base URL and a site-relative path into an absolute
+// URL. The root path "." maps to a trailing slash. Directory paths are
+// emitted with a trailing slash.
+func absURL(baseURL, sitePath string) string {
+	base := strings.TrimRight(baseURL, "/")
+	p := strings.TrimPrefix(sitePath, "/")
+	if p == "" || p == "." {
+		return base + "/"
+	}
+	if isDirPath(p) {
+		return base + "/" + p + "/"
+	}
+	return base + "/" + p
+}
+
+// isDirPath reports whether p is a directory-type site-relative path: either
+// the root "." or any path whose last segment has no file extension.
+// path.Ext(".") returns "." (not ""), so "." must be handled explicitly.
+func isDirPath(p string) bool {
+	return p == "." || path.Ext(path.Base(p)) == ""
+}
+
+// splitPath splits a site-relative path into segments.
+// The root path "." and empty string both return nil.
+func splitPath(p string) []string {
+	if p == "." || p == "" {
+		return nil
+	}
+	return strings.Split(p, "/")
+}
+
+// SortByPath returns a new slice sorted lexicographically by SitePath ascending.
 func SortByPath(pages []Page) []Page {
 	out := make([]Page, len(pages))
 	copy(out, pages)
 	slices.SortStableFunc(out, func(a, b Page) int {
-		return strings.Compare(a.URLPath(), b.URLPath())
+		return strings.Compare(a.SitePath(), b.SitePath())
 	})
 	return out
 }
@@ -346,9 +414,9 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
 			return nil
 		}
 
-		urlPath, isIndex, priority := fileURLPath(filePath)
+		sitePath, isIndex, priority := fileSitePath(filePath)
 
-		pg, err := newPageFromFS(urlPath, fsys, filePath)
+		pg, err := newPageFromFS(sitePath, fsys, filePath)
 		if err != nil {
 			return fmt.Errorf("page: %s: %w", filePath, err)
 		}
@@ -357,11 +425,11 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
 		}
 
 		if isIndex {
-			if existing, ok := dirIndexes[urlPath]; !ok || priority < existing.priority {
-				dirIndexes[urlPath] = indexEntry{page: pg, priority: priority}
+			if existing, ok := dirIndexes[sitePath]; !ok || priority < existing.priority {
+				dirIndexes[sitePath] = indexEntry{page: pg, priority: priority}
 			}
 		} else {
-			pages[urlPath] = pg
+			pages[sitePath] = pg
 		}
 		return nil
 	})
@@ -369,20 +437,20 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
 		return nil, err
 	}
 
-	for urlPath, entry := range dirIndexes {
-		pages[urlPath] = entry.page
+	for sitePath, entry := range dirIndexes {
+		pages[sitePath] = entry.page
 	}
 	return pages, nil
 }
 
 // newPageFromFS constructs a Page from the FS using the correct internal
 // constructor so the page can re-read its body at render time.
-func newPageFromFS(urlPath string, fsys fs.FS, filePath string) (Page, error) {
+func newPageFromFS(sitePath string, fsys fs.FS, filePath string) (Page, error) {
 	switch ext := fileExt(filePath); ext {
 	case ".md":
-		return newMarkdownPageFromFS(urlPath, fsys, filePath)
+		return newMarkdownPageFromFS(sitePath, fsys, filePath)
 	case ".html", ".htm", ".xml":
-		pg, err := newHTMLPageFromFS(urlPath, fsys, filePath)
+		pg, err := newHTMLPageFromFS(sitePath, fsys, filePath)
 		if err != nil || pg == nil {
 			return nil, err
 		}
@@ -392,14 +460,13 @@ func newPageFromFS(urlPath string, fsys fs.FS, filePath string) (Page, error) {
 	}
 }
 
-// deriveSlug returns the last path segment of urlPath with content extensions
-// stripped. For directory paths (trailing slash) it returns the directory name.
-// Returns "" for the root path.
-func deriveSlug(urlPath string) string {
-	base := path.Base(urlPath)
-	if base == "/" || base == "." {
+// deriveSlug returns the last path segment of sitePath with content extensions
+// stripped. Returns "" for the root path ".".
+func deriveSlug(sitePath string) string {
+	if sitePath == "." {
 		return ""
 	}
+	base := path.Base(sitePath)
 	ext := path.Ext(base)
 	switch ext {
 	case ".md", ".html", ".htm", ".xml":
@@ -408,28 +475,23 @@ func deriveSlug(urlPath string) string {
 	return base
 }
 
-// fileURLPath derives the URL path and index priority for a file path within an
-// fs.FS. Index files (index.html, index.htm, index.md) map to the parent
-// directory path with a trailing slash; all other files keep their extension.
+// fileSitePath derives the site-relative path and index priority for a file
+// path within an fs.FS. Index files (index.html, index.htm, index.md) map to
+// their parent directory path (e.g. "blog/index.md" → "blog", "index.md" →
+// "."); all other files keep their full relative path.
 // priority is 0 for non-index files; lower values beat higher for index files.
-func fileURLPath(filePath string) (urlPath string, isIndex bool, priority int) {
+func fileSitePath(filePath string) (sitePath string, isIndex bool, priority int) {
 	dir := path.Dir(filePath)
 	base := path.Base(filePath)
-
-	dirURL := "/"
-	if dir != "." {
-		dirURL = "/" + dir + "/"
-	}
-
 	switch base {
 	case "index.html":
-		return dirURL, true, 1
+		return dir, true, 1
 	case "index.htm":
-		return dirURL, true, 2
+		return dir, true, 2
 	case "index.md":
-		return dirURL, true, 3
+		return dir, true, 3
 	}
-	return "/" + filePath, false, 0
+	return filePath, false, 0
 }
 
 func fileExt(filePath string) string {
@@ -449,8 +511,8 @@ func fileExt(filePath string) string {
 // File ownership transfers to the hook on a non-nil return; on nil, nil the
 // hook does not read or close the file.
 func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
-	return func(urlPath string, f fs.File) (endpoint.Renderer, error) {
-		pg, ok := s.Get(urlPath)
+	return func(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
+		pg, ok := s.Get(filePath)
 		if !ok {
 			return nil, nil
 		}
@@ -461,11 +523,11 @@ func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
 
 // DirRenderer returns an endpoint.FileRendererHook for directory requests.
 // Index files (index.html > index.htm > index.md) are registered under the
-// parent directory path at NewSite time, so the hook calls site.Get(urlPath)
+// parent directory path at NewSite time, so the hook calls site.Get(path)
 // with no ambiguity. On nil, nil the hook does not call ReadDir on the file.
 func (s *fsSite) DirRenderer() endpoint.FileRendererHook {
-	return func(urlPath string, f fs.File) (endpoint.Renderer, error) {
-		pg, ok := s.Get(urlPath)
+	return func(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
+		pg, ok := s.Get(filePath)
 		if !ok {
 			return nil, nil
 		}

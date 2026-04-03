@@ -16,13 +16,13 @@ import (
 )
 
 type htmlPage struct {
-	urlPath  string
+	sitePath string
 	meta     Meta
 	fsys     fs.FS
 	filePath string
 }
 
-func (p *htmlPage) URLPath() string { return p.urlPath }
+func (p *htmlPage) SitePath() string { return p.sitePath }
 func (p *htmlPage) Meta() Meta      { return p.meta }
 
 func (p *htmlPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, error) {
@@ -32,12 +32,12 @@ func (p *htmlPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, error
 
 	raw, err := p.source()
 	if err != nil {
-		return nil, fmt.Errorf("page: read %s: %w", p.urlPath, err)
+		return nil, fmt.Errorf("page: read %s: %w", p.sitePath, err)
 	}
 
 	_, jsonld, head, body, err := parseHTMLDocument(raw, nil)
 	if err != nil {
-		return nil, fmt.Errorf("page: parse html %s: %w", p.urlPath, err)
+		return nil, fmt.Errorf("page: parse html %s: %w", p.sitePath, err)
 	}
 
 	chain := layoutChain(p.meta)
@@ -48,7 +48,7 @@ func (p *htmlPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, error
 	meta, tmpl := p.meta, layout.Template()
 
 	return endpoint.RendererFunc(func(w http.ResponseWriter, r *http.Request) error {
-		ctx := RenderContext{Content: body, Head: head, JSONLD: jsonld, Config: cfg, Meta: meta, Site: site, Request: r}
+		ctx := RenderContext{Content: body, Head: head, JSONLD: jsonld, Config: cfg, Meta: meta, SitePath: p.sitePath, Site: site, Request: r}
 		return renderChain(w, r, tmpl, chain, ctx)
 	}), nil
 }
@@ -63,7 +63,7 @@ func (p *htmlPage) source() ([]byte, error) {
 }
 
 // newHTMLPageFromFS creates an htmlPage backed by the FS.
-func newHTMLPageFromFS(urlPath string, fsys fs.FS, filePath string) (*htmlPage, error) {
+func newHTMLPageFromFS(sitePath string, fsys fs.FS, filePath string) (*htmlPage, error) {
 	f, err := fsys.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -88,9 +88,9 @@ func newHTMLPageFromFS(urlPath string, fsys fs.FS, filePath string) (*htmlPage, 
 		return nil, nil // no layout declared — serve as static file
 	}
 	if meta.Slug == "" {
-		meta.Slug = deriveSlug(urlPath)
+		meta.Slug = deriveSlug(sitePath)
 	}
-	return &htmlPage{urlPath: urlPath, meta: meta, fsys: fsys, filePath: filePath}, nil
+	return &htmlPage{sitePath: sitePath, meta: meta, fsys: fsys, filePath: filePath}, nil
 }
 
 // parseHTMLDocument parses raw HTML and returns (Meta, jsonld, headHTML, bodyHTML, error).

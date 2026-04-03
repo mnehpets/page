@@ -13,8 +13,18 @@ receives a `RenderContext` value as its dot (`.`).
 | `.JSONLD` | `template.JS` | A schema.org JSON-LD blob ready to drop into `<script type="application/ld+json">{{ .JSONLD }}</script>`. Empty string when no metadata was available. |
 | `.Meta` | `Meta` | Parsed page metadata. See the [Meta fields](#meta-fields) table below. |
 | `.Config` | `SiteConfig` | Operator-supplied site configuration. See [SiteConfig fields](#siteconfig-fields). |
+| `.SitePath` | `string` | Site-relative path of the current page, e.g. `blog/hello.md` or `blog` for a directory index. The root index page has path `"."`. Use this with `Site` methods such as `.Site.AncestorsOf .SitePath`. |
 | `.Site` | `Site` | The site index. Provides query methods for iterating over all pages. See [Site methods](#site-methods). |
 | `.Request` | `*http.Request` | The incoming HTTP request. Useful for reading the URL, query parameters, or headers. |
+
+## RenderContext methods
+
+These are the primary link-generation operations for templates.
+
+| Call | Returns | Description |
+|------|---------|-------------|
+| `.Href target` | `string` | Returns a URL relative to the current page. `target` may be a `Page`, a `RenderContext`, or a site-relative path string. Typical use inside `range`: `{{ $.Href . }}`. |
+| `.AbsURL target` | `string` | Returns the canonical absolute URL for `target`. `target` may be a `Page`, a `RenderContext`, or a site-relative path string. Typical use in feeds/sitemaps: `{{ $.AbsURL . }}`. |
 
 ## Meta fields
 
@@ -43,7 +53,7 @@ Accessed as `.Config.FieldName`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `.Config.BaseURL` | `string` | Canonical base URL, e.g. `https://example.com` (no trailing slash). Use this to build absolute URLs: `{{ printf "%s%s" .Config.BaseURL .Meta.Slug }}`. |
+| `.Config.BaseURL` | `string` | Canonical base URL of the site, including routing prefix, e.g. `https://example.com/docs` (no trailing slash). `RenderContext.AbsURL` uses this to build canonical absolute URLs. |
 | `.Config.Name` | `string` | Human-readable site name. |
 | `.Config.Lang` | `string` | BCP 47 language tag, e.g. `en`. Defaults to `en` when empty. |
 
@@ -51,21 +61,27 @@ Accessed as `.Config.FieldName`.
 
 The `.Site` value is available to all templates and supports the following calls.
 
+All path arguments and return values use the **site-relative** form: no leading
+slash, directories without a trailing slash, and `"."` for the site root. The
+current page's site-relative path is available as `.SitePath` on `RenderContext`.
+Path values are primarily useful for lookups and site navigation; for link generation,
+prefer `.Href` and `.AbsURL` on `RenderContext`.
+
 | Call | Returns | Description |
 |------|---------|-------------|
 | `.Site.All` | `[]Page` | All non-draft pages in the site. |
 | `.Site.ByTag "name"` | `[]Page` | Pages that carry the given tag. |
 | `.Site.ByCollection "name"` | `[]Page` | Pages in the named collection. |
-| `.Site.Get "/path/"` | `Page, bool` | Look up a single page by its URL path. |
-| `.Site.AncestorsOf "/path/"` | `[]Page` | Pages on the path from the root down to (but not including) the given URL path, ordered root-first. Intermediate paths absent from the site index are skipped. Useful for breadcrumb navigation. |
-| `.Site.ChildrenOf "/path/"` | `[]Page` | Pages that are exactly one path segment deeper than the given URL path. Use `ChildrenOf (parentPath .Request.URL.Path)` to get siblings of the current page. |
+| `.Site.Get "blog/hello.md"` | `Page, bool` | Look up a single page by its site-relative path. |
+| `.Site.AncestorsOf "blog/post.md"` | `[]Page` | Pages on the path from the root down to (but not including) the given path, ordered root-first. Intermediate paths absent from the site index are skipped. Useful for breadcrumb navigation. |
+| `.Site.ChildrenOf "blog"` | `[]Page` | Pages that are exactly one path segment deeper than the given path. |
 | `.Site.Config` | `SiteConfig` | Same value as `.Config`. |
 
 Pages returned by Site methods expose two callable fields:
 
 | Call | Returns | Description |
 |------|---------|-------------|
-| `.URLPath` | `string` | The page's URL path, e.g. `/notes/hello/`. |
+| `.SitePath` | `string` | The page's site-relative path, e.g. `blog/hello.md` or `blog` for a directory index. The root index page has path `"."`. Also available on the top-level `RenderContext` as `.SitePath` for the currently-rendering page. |
 | `.Meta` | `Meta` | The page's metadata (same fields as above). |
 
 ## Template functions
@@ -76,11 +92,11 @@ These functions are available in all layout templates.
 |----------|-----------|-------------|
 | `sortByDate` | `sortByDate pages` | Returns a new `[]Page` sorted by `Meta.Date` descending (newest first). Pages with no date sort last. |
 | `sortByLastMod` | `sortByLastMod pages` | Returns a new `[]Page` sorted by `Meta.LastMod` descending (most recently modified first). |
-| `sortByPath` | `sortByPath pages` | Returns a new `[]Page` sorted lexicographically by `URLPath` ascending. |
+| `sortByPath` | `sortByPath pages` | Returns a new `[]Page` sorted lexicographically by `SitePath` ascending. |
 | `hasTag` | `hasTag meta "tag"` | Reports whether a `Meta` carries the given tag. Use `.Meta` when ranging over pages, or `.Meta` at the top level. |
 | `json` | `json value` | Marshals any value to a JSON literal (`template.JS`). Useful for passing structured data to JavaScript. |
 | `safeHTML` | `safeHTML "string"` | Marks a string as safe HTML, bypassing contextual escaping. Use only with trusted, statically-known strings — never with user input. |
-| `parentPath` | `parentPath "/a/b/"` | Returns the parent URL path. `parentPath("/a/b/")` → `"/a/"`, `parentPath("/a/")` → `"/"`, `parentPath("/")` → `""`. Pure string operation; does not consult the site index. |
+| `parentPath` | `parentPath "blog/post.md"` | Returns the parent path. `parentPath("blog/post.md")` → `"blog"`, `parentPath("blog")` → `"."`, `parentPath(".")` → `""`. Pure string operation; does not consult the site index. |
 
 ## Layout chains
 
@@ -114,7 +130,7 @@ If no layout is declared, the template named `default` is used.
   <ul>
   {{- range sortByDate (.Site.ByCollection "posts") }}
     <li>
-      <a href="{{ .URLPath }}">{{ .Meta.Title }}</a>
+      <a href="{{ $.Href . }}">{{ .Meta.Title }}</a>
       — {{ .Meta.Date.Format "2 January 2006" }}
     </li>
   {{- end }}
@@ -133,7 +149,7 @@ If no layout is declared, the template named `default` is used.
 {{- range .Site.ByTag "mime:text/html" }}
 {{- if not (hasTag .Meta "noindex") }}
   <url>
-    <loc>{{ printf "%s%s" $.Config.BaseURL .URLPath }}</loc>
+    <loc>{{ $.AbsURL . }}</loc>
   </url>
 {{- end }}
 {{- end }}
@@ -151,13 +167,13 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
 
 ```html
 {{ define "sidebar" }}
-{{- $cur := .Request.URL.Path }}
+{{- $cur := .SitePath }}
 <nav class="sidebar">
   {{- $ancestors := .Site.AncestorsOf $cur }}
   {{- if $ancestors }}
   <ol class="breadcrumb">
     {{- range $ancestors }}
-    <li><a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
+    <li><a href="{{ $.Href . }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
     {{- end }}
   </ol>
   {{- end }}
@@ -166,8 +182,8 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   {{- if $siblings }}
   <ul class="siblings">
     {{- range $siblings }}{{- if not (hasTag .Meta "noindex") }}
-    <li{{if eq .URLPath $cur}} class="current"{{end}}>
-      <a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a>
+    <li{{if eq .SitePath $cur}} class="current"{{end}}>
+      <a href="{{ $.Href . }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a>
     </li>
     {{- end }}{{- end }}
   </ul>
@@ -177,7 +193,7 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   {{- if $children }}
   <ul class="children">
     {{- range $children }}{{- if not (hasTag .Meta "noindex") }}
-    <li><a href="{{ .URLPath }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
+    <li><a href="{{ $.Href . }}">{{ or .Meta.LinkTitle .Meta.Title .Meta.Slug }}</a></li>
     {{- end }}{{- end }}
   </ul>
   {{- end }}

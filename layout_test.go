@@ -7,7 +7,6 @@ import (
 	"testing/fstest"
 )
 
-
 func TestNewLayout_ParsesTemplates(t *testing.T) {
 	fsys := fstest.MapFS{
 		"_layouts/default.html": {Data: []byte(`{{define "default"}}<html>{{.Content}}</html>{{end}}`)},
@@ -92,10 +91,10 @@ func TestBuiltinParentPath(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"/a/b/", "/a/"},
-		{"/a/", "/"},
-		{"/", ""},
-		{"/a/b.md", "/a/"},
+		{"a/b/c.md", "a/b"},
+		{"a/b", "a"},
+		{"a.md", "."},
+		{".", ""},
 	}
 	for _, c := range cases {
 		var buf strings.Builder
@@ -110,7 +109,7 @@ func TestBuiltinParentPath(t *testing.T) {
 
 func TestBuiltinSortByPath(t *testing.T) {
 	fsys := fstest.MapFS{
-		"tmpl.html": {Data: []byte(`{{define "t"}}{{range sortByPath .}}{{.URLPath}}{{end}}{{end}}`)},
+		"tmpl.html": {Data: []byte(`{{define "t"}}{{range sortByPath .}}{{.SitePath}}{{end}}{{end}}`)},
 	}
 	l, err := NewLayout(fsys, "tmpl.html")
 	if err != nil {
@@ -118,15 +117,94 @@ func TestBuiltinSortByPath(t *testing.T) {
 	}
 
 	pages := []Page{
-		&markdownPage{urlPath: "/c/"},
-		&markdownPage{urlPath: "/a/"},
-		&markdownPage{urlPath: "/b/"},
+		&markdownPage{sitePath: "c"},
+		&markdownPage{sitePath: "a"},
+		&markdownPage{sitePath: "b"},
 	}
 	var buf strings.Builder
 	if err := l.Template().ExecuteTemplate(&buf, "t", pages); err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
-	if got, want := buf.String(), "/a//b//c/"; got != want {
+	if got, want := buf.String(), "abc"; got != want {
 		t.Errorf("sortByPath output = %q, want %q", got, want)
+	}
+}
+
+func TestRenderContextHref(t *testing.T) {
+	ctx := RenderContext{SitePath: "blog", Config: SiteConfig{BaseURL: "https://example.com/docs"}}
+	targetPage := &markdownPage{sitePath: "blog/post.md"}
+
+	cases := []struct {
+		name   string
+		target any
+		want   string
+	}{
+		{name: "page", target: targetPage, want: "post.md"},
+		{name: "path", target: "about.md", want: "../about.md"},
+		{name: "context", target: RenderContext{SitePath: "."}, want: "../"},
+	}
+
+	for _, c := range cases {
+		got, err := ctx.Href(c.target)
+		if err != nil {
+			t.Fatalf("Href(%s): %v", c.name, err)
+		}
+		if got != c.want {
+			t.Errorf("Href(%s) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRenderContextAbsURL(t *testing.T) {
+	ctx := RenderContext{SitePath: "blog", Config: SiteConfig{BaseURL: "https://example.com/docs"}}
+	targetPage := &markdownPage{sitePath: "blog/post.md"}
+
+	cases := []struct {
+		name   string
+		target any
+		want   string
+	}{
+		{name: "page", target: targetPage, want: "https://example.com/docs/blog/post.md"},
+		{name: "path", target: "about.md", want: "https://example.com/docs/about.md"},
+		{name: "context", target: RenderContext{SitePath: "."}, want: "https://example.com/docs/"},
+	}
+
+	for _, c := range cases {
+		got, err := ctx.AbsURL(c.target)
+		if err != nil {
+			t.Fatalf("AbsURL(%s): %v", c.name, err)
+		}
+		if got != c.want {
+			t.Errorf("AbsURL(%s) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestRenderContextLinkMethodsTemplateUsage(t *testing.T) {
+	fsys := fstest.MapFS{
+		"tmpl.html": {Data: []byte(`{{define "t"}}{{range .Pages}}{{$.Ctx.Href .}}|{{$.Ctx.AbsURL .}};{{end}}{{end}}`)},
+	}
+	l, err := NewLayout(fsys, "tmpl.html")
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+
+	data := struct {
+		Ctx   RenderContext
+		Pages []Page
+	}{
+		Ctx: RenderContext{SitePath: "blog", Config: SiteConfig{BaseURL: "https://example.com/docs"}},
+		Pages: []Page{
+			&markdownPage{sitePath: "blog/post.md"},
+			&markdownPage{sitePath: "about.md"},
+		},
+	}
+
+	var buf strings.Builder
+	if err := l.Template().ExecuteTemplate(&buf, "t", data); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	if got, want := buf.String(), "post.md|https://example.com/docs/blog/post.md;../about.md|https://example.com/docs/about.md;"; got != want {
+		t.Errorf("template output = %q, want %q", got, want)
 	}
 }

@@ -38,7 +38,7 @@ func TestHTMLPage_JSONLDParsed(t *testing.T) {
 	fsys := fstest.MapFS{
 		"blog/post.html": {Data: []byte(htmlWithJSONLD)},
 	}
-	pg, err := newHTMLPageFromFS("/blog/post.html", fsys, "blog/post.html")
+	pg, err := newHTMLPageFromFS("blog/post.html", fsys, "blog/post.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestHTMLPage_HTMLMetaFallback(t *testing.T) {
 </head><body>content</body></html>`
 
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
-	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestHTMLPage_HTMLMetaFallback(t *testing.T) {
 func TestHTMLPage_TitleFallback(t *testing.T) {
 	src := `<!DOCTYPE html><html><head><script type="application/ld+json">{"site":{"layout":"default"}}</script><title>Title Element</title></head><body>x</body></html>`
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
-	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestHTMLPage_FSDateFallback(t *testing.T) {
 	fsys := fstest.MapFS{
 		"page.html": {Data: []byte(src), ModTime: modTime},
 	}
-	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestHTMLPage_DateModified(t *testing.T) {
 }</script>
 </head><body>x</body></html>`
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
-	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestHTMLPage_ContentAndHeadPopulated(t *testing.T) {
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
 	layout := makeTestLayout(t, `{{define "default"}}HEAD:{{.Head}}|BODY:{{.Content}}{{end}}`)
 
-	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestHTMLPage_NoLayoutReturnsNil(t *testing.T) {
 	// file, even if it has other metadata like a title or og: tags.
 	src := `<!DOCTYPE html><html><head><title>Has Title But No Layout</title></head><body>x</body></html>`
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
-	pg, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {
 		t.Fatalf("newHTMLPageFromFS: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestHTMLPage_InvalidJSONReturnsError(t *testing.T) {
 <script type="application/ld+json">{ not valid json }</script>
 </head><body></body></html>`
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
-	_, err := newHTMLPageFromFS("/page.html", fsys, "page.html")
+	_, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err == nil {
 		t.Error("expected error for invalid JSON-LD")
 	}
