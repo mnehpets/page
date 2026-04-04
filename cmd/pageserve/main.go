@@ -13,7 +13,7 @@ import (
 	"flag"
 
 	"github.com/joho/godotenv"
-	"github.com/mnehpets/pageserve"
+	pageserve "github.com/mnehpets/page/serve"
 )
 
 var (
