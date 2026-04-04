@@ -25,8 +25,8 @@ func TestNewSite_IndexBuilt(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pg, ok := site.Get("blog/hello-world.md")
-	if !ok || pg == nil {
+	pg := site.Get("blog/hello-world.md")
+	if pg == nil {
 		t.Error("expected page at blog/hello-world.md")
 	}
 	if pg.Meta().Title != "Hello World" {
@@ -41,10 +41,10 @@ func TestNewSite_SitePathsCorrect(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	if _, ok := site.Get("blog/hello-world.md"); !ok {
+	if site.Get("blog/hello-world.md") == nil {
 		t.Error("missing blog/hello-world.md")
 	}
-	if _, ok := site.Get("about.html"); !ok {
+	if site.Get("about.html") == nil {
 		t.Error("missing about.html")
 	}
 }
@@ -57,8 +57,8 @@ func TestNewSite_IndexFilePriority(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pg, ok := site.Get("blog")
-	if !ok {
+	pg := site.Get("blog")
+	if pg == nil {
 		t.Fatal("expected page at blog")
 	}
 	// index.html has priority — its title comes from <title>.
@@ -96,8 +96,7 @@ func TestNewSite_DraftFiltering(t *testing.T) {
 	}
 
 	// Draft still reachable via Get().
-	pg, ok := site.Get("blog/draft.md")
-	if !ok || pg == nil {
+	if site.Get("blog/draft.md") == nil {
 		t.Error("draft page should be retrievable via Get()")
 	}
 }
@@ -163,7 +162,7 @@ func TestNewSite_SlugDerivation(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pg, _ := site.Get("blog/hello-world.md")
+	pg := site.Get("blog/hello-world.md")
 	if pg.Meta().Slug != "hello-world" {
 		t.Errorf("slug for regular file = %q, want %q", pg.Meta().Slug, "hello-world")
 	}

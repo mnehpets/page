@@ -12,7 +12,9 @@ import (
 
 // Site indexes pages by URL path and exposes query methods for use in templates.
 type Site interface {
-	Get(sitePath string) (Page, bool)
+	// Get looks up a single page by its site-relative path.
+	// Returns nil if no page is registered at that path.
+	Get(sitePath string) Page
 	All() []Page
 	ByTag(tag string) []Page
 	ByCollection(name string) []Page
@@ -109,9 +111,8 @@ func (s *fsSite) Layout() *Layout { return s.layout }
 
 func (s *fsSite) Config() SiteConfig { return s.config }
 
-func (s *fsSite) Get(sitePath string) (Page, bool) {
-	p, ok := s.pages[sitePath]
-	return p, ok
+func (s *fsSite) Get(sitePath string) Page {
+	return s.pages[sitePath]
 }
 
 func (s *fsSite) All() []Page {
@@ -532,8 +533,8 @@ func fileExt(filePath string) string {
 // hook does not read or close the file.
 func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
 	return func(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
-		pg, ok := s.Get(filePath)
-		if !ok {
+		pg := s.Get(filePath)
+		if pg == nil {
 			return nil, nil
 		}
 		f.Close() // page re-reads from its own FS reference at render time
@@ -547,8 +548,8 @@ func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
 // with no ambiguity. On nil, nil the hook does not call ReadDir on the file.
 func (s *fsSite) DirRenderer() endpoint.FileRendererHook {
 	return func(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
-		pg, ok := s.Get(filePath)
-		if !ok {
+		pg := s.Get(filePath)
+		if pg == nil {
 			return nil, nil
 		}
 		f.Close() // page re-reads from its own FS reference at render time

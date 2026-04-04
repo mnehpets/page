@@ -72,7 +72,7 @@ prefer `.Href` and `.AbsURL` on `RenderContext`.
 | `.Site.All` | `[]Page` | All non-draft pages in the site. |
 | `.Site.ByTag "name"` | `[]Page` | Pages that carry the given tag. |
 | `.Site.ByCollection "name"` | `[]Page` | Pages in the named collection. |
-| `.Site.Get "blog/hello.md"` | `Page, bool` | Look up a single page by its site-relative path. |
+| `.Site.Get "blog/hello.md"` | `Page` | Look up a single page by its site-relative path. Returns `nil` if no page is registered at that path. |
 | `.Site.AncestorsOf "blog/post.md"` | `[]Page` | Pages on the path from the root down to (but not including) the given path, ordered root-first. Intermediate paths absent from the site index are skipped. Useful for breadcrumb navigation. |
 | `.Site.ChildrenOf "blog"` | `[]Page` | Pages that are exactly one path segment deeper than the given path. |
 | `.Site.SiblingsOf "blog/post.md"` | `[]Page` | Pages that share the same parent as the given path (i.e. children of its parent). For the root path `"."`, returns the root page itself. Useful for peer navigation. |
