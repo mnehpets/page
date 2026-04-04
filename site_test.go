@@ -447,6 +447,75 @@ func TestChildrenOf(t *testing.T) {
 	})
 }
 
+func TestSiblingsOf(t *testing.T) {
+	fsys := makeNavSiteFS()
+	site, err := NewSite(fsys)
+	if err != nil {
+		t.Fatalf("NewSite: %v", err)
+	}
+
+	t.Run("root siblings contain root itself", func(t *testing.T) {
+		siblings := site.SiblingsOf(".")
+		paths := sitePaths(siblings)
+		if !containsPath(paths, ".") {
+			t.Errorf("root siblings: want [.], got %v", paths)
+		}
+		if len(siblings) != 1 {
+			t.Errorf("root siblings: want exactly 1 entry, got %d: %v", len(siblings), paths)
+		}
+	})
+
+	t.Run("top-level page siblings are other top-level pages", func(t *testing.T) {
+		siblings := site.SiblingsOf("about.md")
+		paths := sitePaths(siblings)
+		if !containsPath(paths, "about.md") {
+			t.Errorf("expected about.md in siblings: %v", paths)
+		}
+		if !containsPath(paths, "blog") {
+			t.Errorf("expected blog in siblings: %v", paths)
+		}
+	})
+
+	t.Run("blog post siblings are other blog pages", func(t *testing.T) {
+		siblings := site.SiblingsOf("blog/post-a.md")
+		paths := sitePaths(siblings)
+		if !containsPath(paths, "blog/post-a.md") {
+			t.Errorf("expected blog/post-a.md in siblings: %v", paths)
+		}
+		if !containsPath(paths, "blog/post-b.md") {
+			t.Errorf("expected blog/post-b.md in siblings: %v", paths)
+		}
+		if !containsPath(paths, "blog/go") {
+			t.Errorf("expected blog/go in siblings: %v", paths)
+		}
+		// grandparent's pages must not appear
+		if containsPath(paths, "about.md") {
+			t.Errorf("about.md should not appear in blog post siblings: %v", paths)
+		}
+	})
+
+	t.Run("draft siblings excluded by default", func(t *testing.T) {
+		siblings := site.SiblingsOf("blog/post-a.md")
+		for _, p := range siblings {
+			if p.Meta().Draft {
+				t.Errorf("draft page %q should not appear in SiblingsOf", p.SitePath())
+			}
+		}
+	})
+
+	t.Run("draft siblings included with WithIncludeDrafts", func(t *testing.T) {
+		s2, err := NewSite(fsys, WithIncludeDrafts())
+		if err != nil {
+			t.Fatalf("NewSite: %v", err)
+		}
+		siblings := s2.SiblingsOf("blog/post-a.md")
+		paths := sitePaths(siblings)
+		if !containsPath(paths, "blog/drafts") {
+			t.Errorf("expected blog/drafts with WithIncludeDrafts: %v", paths)
+		}
+	})
+}
+
 func TestParentPath(t *testing.T) {
 	cases := []struct {
 		input string

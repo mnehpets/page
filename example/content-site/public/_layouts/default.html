@@ -22,7 +22,7 @@
       </ol>
       {{- end }}
 
-      {{- $siblings := sortByPath (.Site.ChildrenOf (parentPath $cur)) }}
+      {{- $siblings := sortByPath (.Site.SiblingsOf $cur) }}
       {{- if $siblings }}
       <ul class="nav-list">
         {{- range $siblings }}{{- if not (hasTag .Meta "noindex") }}

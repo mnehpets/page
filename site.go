@@ -23,6 +23,10 @@ type Site interface {
 	// ChildrenOf returns pages that are exactly one path segment deeper than
 	// sitePath, i.e. pages whose parent site path equals sitePath.
 	ChildrenOf(sitePath string) []Page
+	// SiblingsOf returns pages that share the same parent as sitePath, i.e.
+	// pages that are children of parentPath(sitePath). For the root path "."
+	// (which has no parent), it returns the root page itself.
+	SiblingsOf(sitePath string) []Page
 	Config() SiteConfig
 	FileRenderer() endpoint.FileRendererHook
 	DirRenderer() endpoint.FileRendererHook
@@ -175,6 +179,22 @@ func (s *fsSite) AncestorsOf(sitePath string) []Page {
 		}
 	}
 	return out
+}
+
+// SiblingsOf returns pages that share the same parent as sitePath.
+// For the root path "." (which has no parent), the root page itself is
+// returned, since every page is its own sibling.
+// Draft pages are excluded unless WithIncludeDrafts was used.
+func (s *fsSite) SiblingsOf(sitePath string) []Page {
+	par := parentPath(sitePath)
+	if par == "" {
+		// Root has no parent level; return the root page itself if present.
+		if pg, ok := s.pages[sitePath]; ok && (s.drafts || !pg.Meta().Draft) {
+			return []Page{pg}
+		}
+		return nil
+	}
+	return s.ChildrenOf(par)
 }
 
 // ChildrenOf returns pages that are exactly one path segment deeper than
