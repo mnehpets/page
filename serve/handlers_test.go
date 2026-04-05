@@ -41,11 +41,11 @@ func buildHandler(t *testing.T, factory HandlerFactory, node *yaml.Node) http.Ha
 	if err := bldr.Validate(Config{}); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	ep, err := bldr.Build(Config{}, &Server{})
+	entries, err := bldr.Build(Config{}, &Server{}, "/")
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	return endpoint.HandleFunc(ep)
+	return endpoint.HandleFunc(entries[0].Endpoint)
 }
 
 // --- routePathOnly ---
@@ -101,16 +101,12 @@ func buildHandlerOnMux(t *testing.T, factory HandlerFactory, node *yaml.Node, ro
 	if err != nil {
 		t.Fatalf("factory: %v", err)
 	}
-	ep, err := bldr.Build(Config{}, &Server{})
+	entries, err := bldr.Build(Config{}, &Server{}, routePath)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	pattern := routePath
-	if sp, ok := bldr.(subPathBuilder); ok {
-		pattern = sp.muxPattern(routePath)
-	}
 	mux := http.NewServeMux()
-	mux.Handle(pattern, endpoint.HandleFunc(ep))
+	mux.Handle(entries[0].Pattern, endpoint.HandleFunc(entries[0].Endpoint))
 	return mux
 }
 
@@ -197,12 +193,12 @@ func TestProxyHandlerFactory_PrefixStripping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("factory: %v", err)
 	}
-	ep, err := bldr.Build(Config{}, &Server{})
+	entries, err := bldr.Build(Config{}, &Server{}, "/gh/")
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/gh/{path...}", endpoint.HandleFunc(ep))
+	mux.Handle(entries[0].Pattern, endpoint.HandleFunc(entries[0].Endpoint))
 
 	cases := []struct {
 		request string
@@ -257,12 +253,12 @@ func TestProxyHandler_PathTraversalCleanedByStdlib(t *testing.T) {
 	if err != nil {
 		t.Fatalf("factory: %v", err)
 	}
-	ep, err := bldr.Build(Config{}, &Server{})
+	entries, err := bldr.Build(Config{}, &Server{}, "/api/")
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/api/{path...}", endpoint.HandleFunc(ep))
+	mux.Handle(entries[0].Pattern, endpoint.HandleFunc(entries[0].Endpoint))
 
 	cases := []struct {
 		request string

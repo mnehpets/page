@@ -220,8 +220,10 @@ type simpleBuilder struct {
 	ep Endpoint
 }
 
-func (b *simpleBuilder) Validate(cfg Config) error                       { return nil }
-func (b *simpleBuilder) Build(cfg Config, srv *Server) (Endpoint, error) { return b.ep, nil }
+func (b *simpleBuilder) Validate(cfg Config) error { return nil }
+func (b *simpleBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
+	return []RouteEntry{{Pattern: routePath, Endpoint: b.ep}}, nil
+}
 
 // TestLogoutEndpoint_RequiresPOST verifies that the logout endpoint only accepts
 // POST requests, mirroring the "POST "+logoutPath registration in Build.

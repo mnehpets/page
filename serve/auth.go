@@ -25,11 +25,16 @@ func (b *authBuilder) Validate(cfg Config) error {
 	return nil
 }
 
-func (b *authBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
+func (b *authBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
 	if srv.AuthHandler == nil {
 		return nil, fmt.Errorf("auth handler not initialised in server")
 	}
-	return opaqueHandlerEndpoint(srv.AuthHandler), nil
+	basePath := routePathOnly(routePath)
+	return []RouteEntry{
+		{Pattern: routePath, Endpoint: opaqueHandlerEndpoint(srv.AuthHandler)},
+		{Pattern: "POST " + path.Join(basePath, "logout"), Endpoint: logoutEndpoint},
+		{Pattern: path.Join(basePath, "me"), Endpoint: meEndpoint},
+	}, nil
 }
 
 func authHandlerFactory() HandlerFactory {
@@ -225,13 +230,28 @@ func newOAuthHandler(
 }
 
 // logoutEndpoint clears the session and redirects to "/".
-func logoutEndpoint(w http.ResponseWriter, r *http.Request, _ struct{}) (endpoint.Renderer, error) {
+func logoutEndpoint(w http.ResponseWriter, r *http.Request, _ Params) (endpoint.Renderer, error) {
 	if sess, ok := middleware.SessionFromContext(r.Context()); ok {
 		if err := sess.Logout(); err != nil {
 			log.Printf("pageserve: logout: %v", err)
 		}
 	}
 	return &endpoint.RedirectRenderer{URL: "/", Status: http.StatusFound}, nil
+}
+
+// meResponse is the JSON body returned by meEndpoint when a user is logged in.
+type meResponse struct {
+	Username string `json:"username"`
+}
+
+// meEndpoint returns the current user's identity as JSON, or null if not logged in.
+func meEndpoint(w http.ResponseWriter, r *http.Request, _ Params) (endpoint.Renderer, error) {
+	if sess, ok := middleware.SessionFromContext(r.Context()); ok {
+		if username, loggedIn := sess.Username(); loggedIn {
+			return &endpoint.JSONRenderer{Value: meResponse{Username: username}}, nil
+		}
+	}
+	return &endpoint.JSONRenderer{Value: nil}, nil
 }
 
 // oidcRegistry creates a Registry and registers the given OAuthProvider.

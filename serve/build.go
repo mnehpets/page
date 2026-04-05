@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"path"
 	"strings"
 	"time"
 
@@ -160,15 +159,15 @@ func Build(cfg Config, opts ...BuildOption) (*Server, error) {
 	securityProc := middleware.NewSecurityHeadersProcessor(securityOpts...)
 	srv.mux = http.NewServeMux()
 
-	// Build each route's endpoint and register on the mux
+	// Build each route's endpoints and register them on the mux.
 	for _, r := range cfg.Routes {
-		ep, err := r.builder.Build(cfg, srv)
+		entries, err := r.builder.Build(cfg, srv, r.Path)
 		if err != nil {
 			return nil, fmt.Errorf("pageserve: build route %q: %w", r.Path, err)
 		}
 
-		// Add common processors for all routes: session processor, so endpoints can
-		// access session data if needed, and security headers.
+		// Assemble the processor stack for this route: security headers, session,
+		// and optionally an authn check when an access policy is declared.
 		procs := []endpoint.Processor{securityProc, srv.SessionProc}
 		if r.Access != "" {
 			policy, ok := cfg.Access[r.Access]
@@ -183,21 +182,8 @@ func Build(cfg Config, opts ...BuildOption) (*Server, error) {
 			procs = append(procs, proc)
 		}
 
-		// Handlers that serve sub-paths (files, pages) register with /prefix/{path...}
-		// so that the path can be unmarshaled into the endpoint param.
-		pattern := r.Path
-		if sp, ok := r.builder.(subPathBuilder); ok {
-			pattern = sp.muxPattern(r.Path)
-		}
-
-		srv.mux.Handle(pattern, wrapWithStats(r.Path, endpoint.HandleFunc(ep, procs...)))
-
-		if r.Handler == "auth" {
-			// Special case for the auth handler: also register a logout endpoint at
-			// POST /prefix/logout. POST-only prevents CSRF logout via image tags or
-			// navigations — a form submission or fetch with method POST is required.
-			logoutPath := path.Join(routePathOnly(r.Path), "logout")
-			srv.mux.Handle("POST "+logoutPath, wrapWithStats(logoutPath, endpoint.HandleFunc(logoutEndpoint, srv.SessionProc)))
+		for _, e := range entries {
+			srv.mux.Handle(e.Pattern, wrapWithStats(e.Pattern, endpoint.HandleFunc(e.Endpoint, procs...)))
 		}
 	}
 
@@ -206,13 +192,6 @@ func Build(cfg Config, opts ...BuildOption) (*Server, error) {
 	)
 
 	return srv, nil
-}
-
-// subPathBuilder is implemented by handlers that serve sub-paths (files, pages).
-// The mux pattern returned by muxPattern has {path...} appended so the mux
-// populates r.PathValue("path") for each request.
-type subPathBuilder interface {
-	muxPattern(routePath string) string
 }
 
 // globalLatency is a server-wide latency histogram over rolling windows.

@@ -29,11 +29,22 @@ import (
 type Params = endpoint.FileSystemParams
 type Endpoint = endpoint.EndpointFunc[Params]
 
+// RouteEntry pairs a ServeMux pattern with the endpoint to register at that pattern.
+// HandlerBuilder.Build returns one entry for most handlers, or multiple for handlers
+// (like auth) that own several related endpoints under the same route prefix.
+type RouteEntry struct {
+	Pattern  string
+	Endpoint Endpoint
+}
+
 // HandlerBuilder is returned by a HandlerFactory. It holds the decoded config
 // for a single route and knows how to validate and build its Endpoint.
 type HandlerBuilder interface {
 	Validate(cfg Config) error
-	Build(cfg Config, srv *Server) (Endpoint, error)
+	// Build constructs the route's endpoints. routePath is the ServeMux pattern
+	// from RouteConfig.Path; builders use it to compute sub-patterns for any
+	// additional entries they register (e.g. logout, me under an auth prefix).
+	Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error)
 }
 
 // HandlerFactory parses a route's YAML node into a HandlerBuilder.
@@ -48,10 +59,9 @@ type pagesBuilder struct {
 	IncludeDrafts bool   `yaml:"include_drafts"`
 }
 
-func (b *pagesBuilder) Validate(cfg Config) error          { return nil }
-func (b *pagesBuilder) muxPattern(routePath string) string { return withSubPath(routePath) }
+func (b *pagesBuilder) Validate(cfg Config) error { return nil }
 
-func (b *pagesBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
+func (b *pagesBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
 	dir := b.Dir
 	if dir == "" {
 		dir = "."
@@ -80,14 +90,15 @@ func (b *pagesBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
 	}
 	public := mnfs.NewFilterFS(fsys, noLayouts)
 
-	return (&endpoint.FileSystem{
+	ep := (&endpoint.FileSystem{
 		FS: func(_ context.Context, _ *http.Request) (fs.FS, error) {
 			return public, nil
 		},
 		IndexHTML:    true,
 		FileRenderer: site.FileRenderer(),
 		DirRenderer:  site.DirRenderer(),
-	}).Endpoint, nil
+	}).Endpoint
+	return []RouteEntry{{Pattern: withSubPath(routePath), Endpoint: ep}}, nil
 }
 
 func pagesHandlerFactory() HandlerFactory {
@@ -119,9 +130,8 @@ func (b *filesBuilder) Validate(cfg Config) error {
 	}
 	return nil
 }
-func (b *filesBuilder) muxPattern(routePath string) string { return withSubPath(routePath) }
 
-func (b *filesBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
+func (b *filesBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
 	indexHTML := true
 	if b.IndexHTML != nil {
 		indexHTML = *b.IndexHTML
@@ -133,14 +143,15 @@ func (b *filesBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
 		symlinks: b.Symlinks,
 	}
 
-	return (&endpoint.FileSystem{
+	ep := (&endpoint.FileSystem{
 		FS: func(_ context.Context, _ *http.Request) (fs.FS, error) {
 			return fsys, nil
 		},
 		IndexHTML:        indexHTML,
 		DirectoryListing: b.DirList,
 		DirTemplate:      endpoint.FancyDirTemplate,
-	}).Endpoint, nil
+	}).Endpoint
+	return []RouteEntry{{Pattern: withSubPath(routePath), Endpoint: ep}}, nil
 }
 
 func filesHandlerFactory() HandlerFactory {
@@ -169,16 +180,6 @@ type redirectBuilder struct {
 	PreservePath *bool `yaml:"preserve_path"`
 }
 
-func (b *redirectBuilder) muxPattern(routePath string) string {
-	p := routePathOnly(routePath)
-	// {$} anchors an exact match (e.g. "/{$}" matches only "/"), so treat it
-	// like a non-slash route even though the path before {$} ends with "/".
-	if strings.HasSuffix(p, "/") && !strings.HasSuffix(p, "{$}") {
-		return withSubPath(routePath)
-	}
-	return routePath
-}
-
 func (b *redirectBuilder) Validate(cfg Config) error {
 	if b.To == "" {
 		return fmt.Errorf("redirect (path=%q): to is required", b.Path)
@@ -186,20 +187,28 @@ func (b *redirectBuilder) Validate(cfg Config) error {
 	return nil
 }
 
-func (b *redirectBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
+func (b *redirectBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
 	code := b.Code
 	if code == 0 {
 		code = http.StatusFound
 	}
 	preservePath := b.PreservePath == nil || *b.PreservePath
 	toBase := strings.TrimSuffix(b.To, "/")
-	return func(w http.ResponseWriter, r *http.Request, params Params) (endpoint.Renderer, error) {
+	ep := func(w http.ResponseWriter, r *http.Request, params Params) (endpoint.Renderer, error) {
 		to := b.To
 		if preservePath && params.Path != "" {
 			to = toBase + "/" + params.Path
 		}
 		return &endpoint.RedirectRenderer{URL: to, Status: code}, nil
-	}, nil
+	}
+	// If the route pattern ends with a slash, append {path...} so the sub-path
+	// is available in params for sub-path preservation.
+	p := routePathOnly(routePath)
+	pattern := routePath
+	if strings.HasSuffix(p, "/") {
+		pattern = withSubPath(routePath)
+	}
+	return []RouteEntry{{Pattern: pattern, Endpoint: ep}}, nil
 }
 
 func redirectHandlerFactory() HandlerFactory {
@@ -231,12 +240,10 @@ func (b *proxyBuilder) Validate(cfg Config) error {
 	return nil
 }
 
-func (b *proxyBuilder) muxPattern(routePath string) string { return withSubPath(routePath) }
-
-func (b *proxyBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
+func (b *proxyBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
 	target, _ := url.Parse(b.To) // already validated
 
-	return func(w http.ResponseWriter, r *http.Request, params Params) (endpoint.Renderer, error) {
+	ep := func(w http.ResponseWriter, r *http.Request, params Params) (endpoint.Renderer, error) {
 		proxy := &httputil.ReverseProxy{
 			Rewrite: func(pr *httputil.ProxyRequest) {
 				pr.Out.URL.Scheme = target.Scheme
@@ -247,7 +254,8 @@ func (b *proxyBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
 			},
 		}
 		return &endpoint.ProxyRenderer{Proxy: proxy}, nil
-	}, nil
+	}
+	return []RouteEntry{{Pattern: withSubPath(routePath), Endpoint: ep}}, nil
 }
 
 func proxyHandlerFactory() HandlerFactory {
@@ -267,8 +275,8 @@ func proxyHandlerFactory() HandlerFactory {
 type defaultMuxBuilder struct{}
 
 func (b *defaultMuxBuilder) Validate(cfg Config) error { return nil }
-func (b *defaultMuxBuilder) Build(cfg Config, srv *Server) (Endpoint, error) {
-	return opaqueHandlerEndpoint(http.DefaultServeMux), nil
+func (b *defaultMuxBuilder) Build(cfg Config, srv *Server, routePath string) ([]RouteEntry, error) {
+	return []RouteEntry{{Pattern: routePath, Endpoint: opaqueHandlerEndpoint(http.DefaultServeMux)}}, nil
 }
 
 func defaultMuxHandlerFactory() HandlerFactory {
