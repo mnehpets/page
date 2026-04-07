@@ -57,6 +57,9 @@ type pagesBuilder struct {
 	Path          string `yaml:"path"`
 	Dir           string `yaml:"dir"`
 	IncludeDrafts bool   `yaml:"include_drafts"`
+	DirList       bool   `yaml:"dir_list"`
+	Dotfiles      bool   `yaml:"dotfiles"`
+	Symlinks      bool   `yaml:"symlinks"`
 }
 
 func (b *pagesBuilder) Validate(cfg Config) error { return nil }
@@ -88,15 +91,22 @@ func (b *pagesBuilder) Build(cfg Config, srv *Server, routePath string) ([]Route
 	if err != nil {
 		return nil, fmt.Errorf("pages (path=%q): _layouts filter: %w", b.Path, err)
 	}
-	public := mnfs.NewFilterFS(fsys, noLayouts)
+	serveFS := &filteredFS{
+		base:     dir,
+		dotfiles: b.Dotfiles,
+		symlinks: b.Symlinks,
+	}
+	public := mnfs.NewFilterFS(serveFS, noLayouts)
 
 	ep := (&endpoint.FileSystem{
 		FS: func(_ context.Context, _ *http.Request) (fs.FS, error) {
 			return public, nil
 		},
-		IndexHTML:    true,
-		FileRenderer: site.FileRenderer(),
-		DirRenderer:  site.DirRenderer(),
+		IndexHTML:        true,
+		DirectoryListing: b.DirList,
+		DirTemplate:      endpoint.FancyDirTemplate,
+		FileRenderer:     site.FileRenderer(),
+		DirRenderer:      site.DirRenderer(),
 	}).Endpoint
 	return []RouteEntry{{Pattern: withSubPath(routePath), Endpoint: ep}}, nil
 }

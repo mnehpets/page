@@ -251,12 +251,20 @@ Serves content via the `page` FS library from a local directory.
   handler: pages
   dir: ./content          # optional — source directory (default ".")
   include_drafts: false   # optional — include draft pages (default false)
+  dir_list: false         # optional — serve directory listings (default false)
+  dotfiles: false         # optional — serve/list dotfiles (default false)
+  symlinks: false         # optional — follow symlinks (default false)
 ```
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `dir` | string | `"."` | Source directory for page content |
 | `include_drafts` | bool | `false` | Whether draft pages are served |
+| `dir_list` | bool | `false` | Serve HTML directory listings |
+| `dotfiles` | bool | `false` | Serve and list dotfiles |
+| `symlinks` | bool | `false` | Follow symlinks |
+
+`dotfiles` and `symlinks` affect both serving and listing.
 
 #### `files`
 
