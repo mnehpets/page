@@ -1,0 +1,22 @@
+server:
+  listeners:
+    - address: ":8080"
+
+session:
+  cookie_name: "session"
+  keys:
+    - id: "k1"
+      env: "SESSION_KEY"
+
+site:
+  base_url: "http://localhost:8080"
+  name: "Example Content Site"
+  lang: "en"
+
+routes:
+  - path: /debug/
+    handler: defaultmux
+
+  - path: /
+    handler: pages
+    dir: public
