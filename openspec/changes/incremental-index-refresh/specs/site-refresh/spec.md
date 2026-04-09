@@ -76,7 +76,7 @@ The system SHALL guarantee that concurrent render requests never observe a parti
 
 #### Scenario: Render uses a consistent index snapshot
 - **WHEN** a `FileRenderer` or `DirRenderer` hook is invoked
-- **THEN** a read lock is held from that point through the completion of `Render(w, r)`, so all `Site` method calls within template execution read a consistent index
+- **THEN** a read lock is held from that point through the completion of `Render(w, r)`, so all template query method calls on `RenderContext.Site` read a consistent index
 
 #### Scenario: Refresh waits for in-flight renders
 - **WHEN** `Refresh()` is called while renders are in progress
@@ -88,25 +88,29 @@ The system SHALL guarantee that concurrent render requests never observe a parti
 
 ---
 
-### Requirement: fsnotify watcher
-The system SHALL support a `watch: true` configuration on the `pages` handler that starts an fsnotify watcher. The watcher SHALL debounce events per-file with a ~400ms window and call `UpdateFile` or `DeleteFile` as appropriate. The `pages` handler SHALL maintain a per-route rolling counter of refreshed files (via `expvar` + `metric.NewCounter`, mirroring the `requests` counter in `wrapWithStats`) incremented by the count returned from `Refresh()` and by 1 for each `UpdateFile()` or `DeleteFile()` call.
+### Requirement: fsnotify watcher with recursive subdirectory watching
+The system SHALL support a `watch: true` configuration on the `pages` handler that starts an fsnotify watcher. The watcher SHALL watch the content root and all its subdirectories recursively (fsnotify on Linux is non-recursive; all subdirectories are added explicitly at startup via `addWatchDirs`). New directories created at runtime SHALL be added to the watcher immediately. Only `Write`, `Create`, `Remove`, `Rename` events SHALL trigger index updates; other events (e.g. `Chmod`) SHALL be ignored. The watcher SHALL debounce events per-file with a ~400ms window and call `UpdateFile` or `DeleteFile` as appropriate. The `pages` handler SHALL maintain a per-route rolling counter of refreshed files (via `expvar` + `metric.NewCounter`, mirroring the `requests` counter in `wrapWithStats`) incremented by 1 for each `UpdateFile()` or `DeleteFile()` call.
 
-#### Scenario: File edit triggers index update
-- **WHEN** `watch: true` is set and a page file is saved on disk
-- **THEN** within ~500ms, `site.Get(sitePath).Meta()` reflects the updated frontmatter without a server restart
+#### Scenario: File edit in subdirectory triggers index update
+- **WHEN** `watch: true` is set and a page file in a subdirectory is saved on disk
+- **THEN** within ~500ms, the template query for that page reflects the updated frontmatter without a server restart
 
 #### Scenario: File deletion triggers index removal
 - **WHEN** `watch: true` is set and a page file is deleted
-- **THEN** within ~500ms, `site.Get(sitePath)` returns `nil`
+- **THEN** within ~500ms, the page is absent from the site index
+
+#### Scenario: New subdirectory is watched
+- **WHEN** `watch: true` is set and a new subdirectory is created under the content root
+- **THEN** files subsequently created in that subdirectory generate watch events
 
 #### Scenario: Rapid edits debounced to single update
 - **WHEN** a file receives multiple write events within the debounce window
 - **THEN** `UpdateFile` is called exactly once after the window expires
 
 #### Scenario: Refreshed file count is tracked
-- **WHEN** `Refresh()` re-parses k files, or `UpdateFile()`/`DeleteFile()` is called
-- **THEN** the `refreshed_files` expvar counter for the route is incremented accordingly and visible at `/debug/vars`
+- **WHEN** `UpdateFile()` or `DeleteFile()` is called
+- **THEN** the `refreshed_files` expvar counter for the route is incremented by 1 and visible at `/debug/vars`
 
 #### Scenario: Watcher shuts down with server
 - **WHEN** the server context is cancelled
-- **THEN** the fsnotify watcher goroutine exits cleanly
+- **THEN** the fsnotify watcher goroutine exits cleanly and all pending debounce timers are cancelled

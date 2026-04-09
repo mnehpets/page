@@ -18,10 +18,11 @@
 
 ### Modified Capabilities
 
-- `site`: `fsSite` gains `sync.RWMutex`; all query methods hold a read lock; `FileRenderer`/`DirRenderer` read page and layout under the same lock acquisition for consistency. No change to the `Site` interface contract.
+- `site`: `fsSite` gains `sync.RWMutex`. The exported `Site` interface is renamed `SiteRenderer` and narrowed to rendering hooks only (`FileRenderer()`, `DirRenderer()`). Query methods (`Get`, `All`, `ByTag`, etc.) are removed from the exported interface and moved to an unexported `site` type (which holds a pointer to `*fsSite` and is set as `RenderContext.Site`). The read lock is acquired once per request inside `FileRenderer`/`DirRenderer` and held through `Render()` via `lockedRenderer`; `FileRenderer` and `DirRenderer` share a single `lockedRendererHook` implementation.
 
 ## Impact
 
-- `site.go`: add `sync.RWMutex`, `fsys`, `autoDiscoverLayout`, `fileMeta` to `fsSite`; locking in `FileRenderer`/`DirRenderer` via `lockedRenderer`; add `Refresh()`, `UpdateFile()`, `DeleteFile()`.
-- `serve/handlers.go`: `pagesBuilder` stores `*fsSite`; adds `watch: true` option and fsnotify watcher startup.
+- `site.go`: add `sync.RWMutex`, `fsys`, `autoDiscoverLayout`, `fileMeta` to `fsSite`; rename `Site` → `SiteRenderer` and narrow to renderer hooks; add unexported `site` type for template query API; shared `lockedRendererHook`; add `Refresh()`, `UpdateFile()`, `DeleteFile()`.
+- `page.go`: `RenderContext.Site` typed as `*site`; `Page.Renderer` parameter typed as `*site`.
+- `serve/handlers.go`: `pagesBuilder` type-asserts `page.Refreshable`; adds `watch: true` option; fsnotify watcher recursively watches all subdirectories via `addWatchDirs` and handles new directory creation events at runtime.
 - New dependency: `github.com/fsnotify/fsnotify`.
