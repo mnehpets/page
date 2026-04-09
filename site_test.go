@@ -6,6 +6,12 @@ import (
 	"time"
 )
 
+// viewOf returns a *site for the given SiteIndex, for use in tests that need
+// to call template query methods (Get, All, ByTag, etc.) outside a render.
+func viewOf(si SiteRenderer) *site {
+	return &site{s: si.(*fsSite)}
+}
+
 func makeSiteFS() fstest.MapFS {
 	return fstest.MapFS{
 		"blog/hello-world.md":   {Data: []byte("---\ntitle: Hello World\ntags:\n  - go\ncollection: blog\n---\nBody.\n")},
@@ -25,7 +31,7 @@ func TestNewSite_IndexBuilt(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pg := site.Get("blog/hello-world.md")
+	pg := viewOf(site).Get("blog/hello-world.md")
 	if pg == nil {
 		t.Error("expected page at blog/hello-world.md")
 	}
@@ -41,10 +47,10 @@ func TestNewSite_SitePathsCorrect(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	if site.Get("blog/hello-world.md") == nil {
+	if viewOf(site).Get("blog/hello-world.md") == nil {
 		t.Error("missing blog/hello-world.md")
 	}
-	if site.Get("about.html") == nil {
+	if viewOf(site).Get("about.html") == nil {
 		t.Error("missing about.html")
 	}
 }
@@ -57,7 +63,7 @@ func TestNewSite_IndexFilePriority(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pg := site.Get("blog")
+	pg := viewOf(site).Get("blog")
 	if pg == nil {
 		t.Fatal("expected page at blog")
 	}
@@ -74,7 +80,7 @@ func TestNewSite_StaticFilesExcluded(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	for _, pg := range site.All() {
+	for _, pg := range viewOf(site).All() {
 		if pg.SitePath() == "style.css" {
 			t.Error("static .css file should not appear in All()")
 		}
@@ -89,14 +95,14 @@ func TestNewSite_DraftFiltering(t *testing.T) {
 	}
 
 	// Draft excluded from All().
-	for _, pg := range site.All() {
+	for _, pg := range viewOf(site).All() {
 		if pg.SitePath() == "blog/draft.md" {
 			t.Error("draft page should not appear in All()")
 		}
 	}
 
 	// Draft still reachable via Get().
-	if site.Get("blog/draft.md") == nil {
+	if viewOf(site).Get("blog/draft.md") == nil {
 		t.Error("draft page should be retrievable via Get()")
 	}
 }
@@ -109,7 +115,7 @@ func TestNewSite_WithIncludeDrafts(t *testing.T) {
 	}
 
 	found := false
-	for _, pg := range site.All() {
+	for _, pg := range viewOf(site).All() {
 		if pg.SitePath() == "blog/draft.md" {
 			found = true
 		}
@@ -126,7 +132,7 @@ func TestNewSite_ByTag(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pages := site.ByTag("go")
+	pages := viewOf(site).ByTag("go")
 	if len(pages) == 0 {
 		t.Error("expected pages tagged 'go'")
 	}
@@ -144,7 +150,7 @@ func TestNewSite_ByCollection(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pages := site.ByCollection("blog")
+	pages := viewOf(site).ByCollection("blog")
 	if len(pages) == 0 {
 		t.Error("expected pages in collection 'blog'")
 	}
@@ -162,7 +168,7 @@ func TestNewSite_SlugDerivation(t *testing.T) {
 		t.Fatalf("NewSite: %v", err)
 	}
 
-	pg := site.Get("blog/hello-world.md")
+	pg := viewOf(site).Get("blog/hello-world.md")
 	if pg.Meta().Slug != "hello-world" {
 		t.Errorf("slug for regular file = %q, want %q", pg.Meta().Slug, "hello-world")
 	}
@@ -301,7 +307,7 @@ func TestAncestorsOf(t *testing.T) {
 	}
 
 	t.Run("deep path has root, blog, and go ancestors", func(t *testing.T) {
-		ancestors := site.AncestorsOf("blog/go/intro.md")
+		ancestors := viewOf(site).AncestorsOf("blog/go/intro.md")
 		if len(ancestors) != 3 {
 			t.Fatalf("want 3 ancestors, got %d: %v", len(ancestors), sitePaths(ancestors))
 		}
@@ -317,7 +323,7 @@ func TestAncestorsOf(t *testing.T) {
 	})
 
 	t.Run("root-first ordering", func(t *testing.T) {
-		ancestors := site.AncestorsOf("blog/post-a.md")
+		ancestors := viewOf(site).AncestorsOf("blog/post-a.md")
 		if len(ancestors) != 2 {
 			t.Fatalf("want 2 ancestors (. and blog), got %d", len(ancestors))
 		}
@@ -339,7 +345,7 @@ func TestAncestorsOf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSite: %v", err)
 		}
-		ancestors := s2.AncestorsOf("docs/guide/page.md")
+		ancestors := viewOf(s2).AncestorsOf("docs/guide/page.md")
 		// Only . is in the index; docs/ is absent.
 		if len(ancestors) != 1 {
 			t.Fatalf("want 1 ancestor (only .), got %d: %v", len(ancestors), sitePaths(ancestors))
@@ -350,7 +356,7 @@ func TestAncestorsOf(t *testing.T) {
 	})
 
 	t.Run("root has no ancestors", func(t *testing.T) {
-		ancestors := site.AncestorsOf(".")
+		ancestors := viewOf(site).AncestorsOf(".")
 		if len(ancestors) != 0 {
 			t.Errorf("root ancestors: want 0, got %d", len(ancestors))
 		}
@@ -358,7 +364,7 @@ func TestAncestorsOf(t *testing.T) {
 
 	t.Run("absolute URL path does not infinite loop", func(t *testing.T) {
 		// path.Dir("/") == "/" so a naive loop would spin forever.
-		ancestors := site.AncestorsOf("/")
+		ancestors := viewOf(site).AncestorsOf("/")
 		_ = ancestors // result is unspecified; we only care it terminates
 	})
 
@@ -370,7 +376,7 @@ func TestAncestorsOf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSite: %v", err)
 		}
-		ancestors := s3.AncestorsOf("page.md")
+		ancestors := viewOf(s3).AncestorsOf("page.md")
 		if len(ancestors) != 0 {
 			t.Errorf("want 0 ancestors when . absent, got %d", len(ancestors))
 		}
@@ -385,7 +391,7 @@ func TestChildrenOf(t *testing.T) {
 	}
 
 	t.Run("children of root", func(t *testing.T) {
-		children := site.ChildrenOf(".")
+		children := viewOf(site).ChildrenOf(".")
 		paths := sitePaths(children)
 		if !containsPath(paths, "about.md") {
 			t.Errorf("expected about.md in children of .: %v", paths)
@@ -400,7 +406,7 @@ func TestChildrenOf(t *testing.T) {
 	})
 
 	t.Run("children of blog", func(t *testing.T) {
-		children := site.ChildrenOf("blog")
+		children := viewOf(site).ChildrenOf("blog")
 		paths := sitePaths(children)
 		if !containsPath(paths, "blog/post-a.md") {
 			t.Errorf("expected blog/post-a.md: %v", paths)
@@ -418,7 +424,7 @@ func TestChildrenOf(t *testing.T) {
 	})
 
 	t.Run("draft pages excluded", func(t *testing.T) {
-		children := site.ChildrenOf("blog")
+		children := viewOf(site).ChildrenOf("blog")
 		for _, p := range children {
 			if p.Meta().Draft {
 				t.Errorf("draft page %q should not appear in ChildrenOf", p.SitePath())
@@ -431,7 +437,7 @@ func TestChildrenOf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSite: %v", err)
 		}
-		children := s2.ChildrenOf("blog")
+		children := viewOf(s2).ChildrenOf("blog")
 		paths := sitePaths(children)
 		if !containsPath(paths, "blog/drafts") {
 			t.Errorf("expected blog/drafts with WithIncludeDrafts: %v", paths)
@@ -439,7 +445,7 @@ func TestChildrenOf(t *testing.T) {
 	})
 
 	t.Run("leaf page has no children", func(t *testing.T) {
-		children := site.ChildrenOf("blog/post-a.md")
+		children := viewOf(site).ChildrenOf("blog/post-a.md")
 		if len(children) != 0 {
 			t.Errorf("leaf page should have no children, got %v", sitePaths(children))
 		}
@@ -454,7 +460,7 @@ func TestSiblingsOf(t *testing.T) {
 	}
 
 	t.Run("root siblings contain root itself", func(t *testing.T) {
-		siblings := site.SiblingsOf(".")
+		siblings := viewOf(site).SiblingsOf(".")
 		paths := sitePaths(siblings)
 		if !containsPath(paths, ".") {
 			t.Errorf("root siblings: want [.], got %v", paths)
@@ -465,7 +471,7 @@ func TestSiblingsOf(t *testing.T) {
 	})
 
 	t.Run("top-level page siblings are other top-level pages", func(t *testing.T) {
-		siblings := site.SiblingsOf("about.md")
+		siblings := viewOf(site).SiblingsOf("about.md")
 		paths := sitePaths(siblings)
 		if !containsPath(paths, "about.md") {
 			t.Errorf("expected about.md in siblings: %v", paths)
@@ -476,7 +482,7 @@ func TestSiblingsOf(t *testing.T) {
 	})
 
 	t.Run("blog post siblings are other blog pages", func(t *testing.T) {
-		siblings := site.SiblingsOf("blog/post-a.md")
+		siblings := viewOf(site).SiblingsOf("blog/post-a.md")
 		paths := sitePaths(siblings)
 		if !containsPath(paths, "blog/post-a.md") {
 			t.Errorf("expected blog/post-a.md in siblings: %v", paths)
@@ -494,7 +500,7 @@ func TestSiblingsOf(t *testing.T) {
 	})
 
 	t.Run("draft siblings excluded by default", func(t *testing.T) {
-		siblings := site.SiblingsOf("blog/post-a.md")
+		siblings := viewOf(site).SiblingsOf("blog/post-a.md")
 		for _, p := range siblings {
 			if p.Meta().Draft {
 				t.Errorf("draft page %q should not appear in SiblingsOf", p.SitePath())
@@ -507,7 +513,7 @@ func TestSiblingsOf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSite: %v", err)
 		}
-		siblings := s2.SiblingsOf("blog/post-a.md")
+		siblings := viewOf(s2).SiblingsOf("blog/post-a.md")
 		paths := sitePaths(siblings)
 		if !containsPath(paths, "blog/drafts") {
 			t.Errorf("expected blog/drafts with WithIncludeDrafts: %v", paths)

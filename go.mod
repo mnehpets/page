@@ -3,6 +3,7 @@ module github.com/mnehpets/page
 go 1.25.5
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mnehpets/fs v0.3.0
 	github.com/mnehpets/http v0.6.0

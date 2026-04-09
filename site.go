@@ -3,33 +3,19 @@ package page
 import (
 	"fmt"
 	"io/fs"
+	"net/http"
 	"path"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/mnehpets/http/endpoint"
 )
 
-// Site indexes pages by URL path and exposes query methods for use in templates.
-type Site interface {
-	// Get looks up a single page by its site-relative path.
-	// Returns nil if no page is registered at that path.
-	Get(sitePath string) Page
-	All() []Page
-	ByTag(tag string) []Page
-	ByCollection(name string) []Page
-	// AncestorsOf returns the pages on the path from the root down to — but not
-	// including — sitePath, ordered from shallowest to deepest (root first).
-	// Pages for intermediate site paths absent from the site index are skipped.
-	AncestorsOf(sitePath string) []Page
-	// ChildrenOf returns pages that are exactly one path segment deeper than
-	// sitePath, i.e. pages whose parent site path equals sitePath.
-	ChildrenOf(sitePath string) []Page
-	// SiblingsOf returns pages that share the same parent as sitePath, i.e.
-	// pages that are children of parentPath(sitePath). For the root path "."
-	// (which has no parent), it returns the root page itself.
-	SiblingsOf(sitePath string) []Page
-	Config() SiteConfig
+// SiteRenderer is returned by NewSite and used by the serve layer to wire up
+// rendering. It provides the HTTP renderer hooks.
+type SiteRenderer interface {
 	FileRenderer() endpoint.FileRendererHook
 	DirRenderer() endpoint.FileRendererHook
 }
@@ -69,25 +55,46 @@ func WithConfig(cfg SiteConfig) SiteOption {
 	return func(c *siteConfig) { c.config = cfg }
 }
 
+// Refreshable is implemented by sites that support incremental index refresh.
+// Callers that need live-reload capability should type-assert the SiteIndex
+// returned by NewSite to Refreshable.
+type Refreshable interface {
+	UpdateFile(filePath string) error
+	DeleteFile(filePath string)
+}
+
+// fileRecord holds the change-detection fingerprint for a single content file.
+type fileRecord struct {
+	sitePath string
+	modTime  time.Time
+}
+
 type fsSite struct {
+	mu       sync.RWMutex
 	pages    map[string]Page   // sitePath → Page (all pages, including drafts)
 	children map[string][]Page // parent sitePath → direct child pages (all, including drafts)
 	layout   *Layout
 	drafts   bool // include drafts in query results
 	config   SiteConfig
+
+	// refresh support — immutable after construction
+	fsys               fs.FS
+	autoDiscoverLayout bool
+	fileMeta           map[string]fileRecord // fsFilePath → {sitePath, modTime}
 }
 
 // NewSite walks fsys, parses all .md, .html, and .htm files, and returns a
-// Site indexed by URL path. _layouts/ is automatically parsed unless
-// WithLayout is provided.
-func NewSite(fsys fs.FS, opts ...SiteOption) (Site, error) {
+// SiteIndex ready to wire up HTTP rendering. _layouts/ is automatically parsed
+// unless WithLayout is provided.
+func NewSite(fsys fs.FS, opts ...SiteOption) (SiteRenderer, error) {
 	cfg := &siteConfig{}
 	for _, opt := range opts {
 		opt(cfg)
 	}
 
 	layout := cfg.layout
-	if layout == nil {
+	autoDiscover := layout == nil
+	if autoDiscover {
 		l, err := discoverLayouts(fsys)
 		if err != nil {
 			return nil, err
@@ -95,126 +102,26 @@ func NewSite(fsys fs.FS, opts ...SiteOption) (Site, error) {
 		layout = l
 	}
 
-	pages, err := buildPageIndex(fsys)
+	pages, fileMeta, err := buildPageIndex(fsys)
 	if err != nil {
 		return nil, err
 	}
 
 	children := buildChildIndex(pages)
 
-	return &fsSite{pages: pages, children: children, layout: layout, drafts: cfg.includeDrafts, config: cfg.config}, nil
+	return &fsSite{
+		pages:              pages,
+		children:           children,
+		layout:             layout,
+		drafts:             cfg.includeDrafts,
+		config:             cfg.config,
+		fsys:               fsys,
+		autoDiscoverLayout: autoDiscover,
+		fileMeta:           fileMeta,
+	}, nil
 }
-
-// Layout returns the site's layout, which may be nil if no _layouts/ directory
-// was found and no WithLayout option was provided.
-func (s *fsSite) Layout() *Layout { return s.layout }
 
 func (s *fsSite) Config() SiteConfig { return s.config }
-
-func (s *fsSite) Get(sitePath string) Page {
-	return s.pages[sitePath]
-}
-
-func (s *fsSite) All() []Page {
-	out := make([]Page, 0, len(s.pages))
-	for _, p := range s.pages {
-		if !s.drafts && p.Meta().Draft {
-			continue
-		}
-		out = append(out, p)
-	}
-	return out
-}
-
-func (s *fsSite) ByTag(tag string) []Page {
-	var out []Page
-	for _, p := range s.pages {
-		if !s.drafts && p.Meta().Draft {
-			continue
-		}
-		for _, t := range p.Meta().Tags {
-			if t == tag {
-				out = append(out, p)
-				break
-			}
-		}
-	}
-	return out
-}
-
-func (s *fsSite) ByCollection(name string) []Page {
-	var out []Page
-	for _, p := range s.pages {
-		if !s.drafts && p.Meta().Draft {
-			continue
-		}
-		if p.Meta().Collection == name {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// AncestorsOf returns the pages on the path from the root down to (but not
-// including) sitePath, ordered root-first. Intermediate paths absent from the
-// site index are skipped silently.
-func (s *fsSite) AncestorsOf(sitePath string) []Page {
-	var paths []string
-	cur := sitePath
-	for {
-		par := parentPath(cur)
-		if par == "" || par == cur {
-			break
-		}
-		paths = append(paths, par)
-		cur = par
-	}
-	// paths is child-to-root; reverse to root-first.
-	for i, j := 0, len(paths)-1; i < j; i, j = i+1, j-1 {
-		paths[i], paths[j] = paths[j], paths[i]
-	}
-	var out []Page
-	for _, p := range paths {
-		if pg, ok := s.pages[p]; ok {
-			out = append(out, pg)
-		}
-	}
-	return out
-}
-
-// SiblingsOf returns pages that share the same parent as sitePath.
-// For the root path "." (which has no parent), the root page itself is
-// returned, since every page is its own sibling.
-// Draft pages are excluded unless WithIncludeDrafts was used.
-func (s *fsSite) SiblingsOf(sitePath string) []Page {
-	par := parentPath(sitePath)
-	if par == "" {
-		// Root has no parent level; return the root page itself if present.
-		if pg, ok := s.pages[sitePath]; ok && (s.drafts || !pg.Meta().Draft) {
-			return []Page{pg}
-		}
-		return nil
-	}
-	return s.ChildrenOf(par)
-}
-
-// ChildrenOf returns pages that are exactly one path segment deeper than
-// sitePath. Draft pages are excluded unless WithIncludeDrafts was used.
-func (s *fsSite) ChildrenOf(sitePath string) []Page {
-	all := s.children[sitePath]
-	if s.drafts {
-		out := make([]Page, len(all))
-		copy(out, all)
-		return out
-	}
-	out := make([]Page, 0, len(all))
-	for _, p := range all {
-		if !p.Meta().Draft {
-			out = append(out, p)
-		}
-	}
-	return out
-}
 
 // buildChildIndex builds a parent-sitePath → direct-children map from the page
 // index. All pages (including drafts) are stored; draft filtering is applied at
@@ -423,8 +330,11 @@ type indexEntry struct {
 
 // buildPageIndex walks fsys and builds the URL-path → Page map. Index files
 // compete per directory; the highest-priority winner is kept.
-func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
+// It also returns a fileMeta map recording the fsFilePath → {sitePath, modTime}
+// fingerprint for every recognised file, used for incremental refresh.
+func buildPageIndex(fsys fs.FS) (map[string]Page, map[string]fileRecord, error) {
 	pages := make(map[string]Page)
+	fileMeta := make(map[string]fileRecord)
 	dirIndexes := make(map[string]indexEntry) // dir URL path → best index entry
 
 	err := fs.WalkDir(fsys, ".", func(filePath string, d fs.DirEntry, err error) error {
@@ -433,6 +343,11 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
 		}
 		if d.IsDir() {
 			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
 		}
 
 		sitePath, isIndex, priority := fileSitePath(filePath)
@@ -445,6 +360,8 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
 			return nil // unrecognised file type
 		}
 
+		fileMeta[filePath] = fileRecord{sitePath: sitePath, modTime: info.ModTime()}
+
 		if isIndex {
 			if existing, ok := dirIndexes[sitePath]; !ok || priority < existing.priority {
 				dirIndexes[sitePath] = indexEntry{page: pg, priority: priority}
@@ -455,13 +372,13 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for sitePath, entry := range dirIndexes {
 		pages[sitePath] = entry.page
 	}
-	return pages, nil
+	return pages, fileMeta, nil
 }
 
 // newPageFromFS constructs a Page from the FS using the correct internal
@@ -527,19 +444,150 @@ func fileExt(filePath string) string {
 	return ""
 }
 
+// site is the template API type passed to page renderers. It holds a pointer
+// to *fsSite and reads its fields directly; safety relies on the caller
+// (FileRenderer/DirRenderer) holding s.mu.RLock for the duration of the render
+// via lockedRenderer. All query methods called from templates therefore see a
+// consistent index without their own locks — avoiding both per-call overhead
+// and the recursive-RLock hazard that would arise if templates called *fsSite
+// methods while lockedRenderer already holds the read lock.
+type site struct{ s *fsSite }
+
+func (v *site) Get(sitePath string) Page { return v.s.pages[sitePath] }
+
+func (v *site) All() []Page {
+	out := make([]Page, 0, len(v.s.pages))
+	for _, p := range v.s.pages {
+		if !v.s.drafts && p.Meta().Draft {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func (v *site) ByTag(tag string) []Page {
+	var out []Page
+	for _, p := range v.s.pages {
+		if !v.s.drafts && p.Meta().Draft {
+			continue
+		}
+		for _, t := range p.Meta().Tags {
+			if t == tag {
+				out = append(out, p)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func (v *site) ByCollection(name string) []Page {
+	var out []Page
+	for _, p := range v.s.pages {
+		if !v.s.drafts && p.Meta().Draft {
+			continue
+		}
+		if p.Meta().Collection == name {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (v *site) AncestorsOf(sitePath string) []Page {
+	var paths []string
+	cur := sitePath
+	for {
+		par := parentPath(cur)
+		if par == "" || par == cur {
+			break
+		}
+		paths = append(paths, par)
+		cur = par
+	}
+	for i, j := 0, len(paths)-1; i < j; i, j = i+1, j-1 {
+		paths[i], paths[j] = paths[j], paths[i]
+	}
+	var out []Page
+	for _, p := range paths {
+		if pg, ok := v.s.pages[p]; ok {
+			out = append(out, pg)
+		}
+	}
+	return out
+}
+
+func (v *site) SiblingsOf(sitePath string) []Page {
+	par := parentPath(sitePath)
+	if par == "" {
+		if pg, ok := v.s.pages[sitePath]; ok && (v.s.drafts || !pg.Meta().Draft) {
+			return []Page{pg}
+		}
+		return nil
+	}
+	return v.ChildrenOf(par)
+}
+
+func (v *site) ChildrenOf(sitePath string) []Page {
+	all := v.s.children[sitePath]
+	if v.s.drafts {
+		out := make([]Page, len(all))
+		copy(out, all)
+		return out
+	}
+	out := make([]Page, 0, len(all))
+	for _, p := range all {
+		if !p.Meta().Draft {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (v *site) Config() SiteConfig { return v.s.config }
+
+// lockedRenderer wraps a Renderer and releases a read lock after Render returns.
+// The read lock is acquired in FileRenderer/DirRenderer and held across the
+// entire render pipeline — covering page lookup, layout selection, and template
+// execution — so all query methods called from templates see a consistent
+// index. Templates receive a *site (not *fsSite), so no recursive-RLock
+// hazard arises.
+type lockedRenderer struct {
+	mu    sync.Locker // s.mu.RLocker(); Unlock() releases the read lock
+	inner endpoint.Renderer
+}
+
+func (lr *lockedRenderer) Render(w http.ResponseWriter, r *http.Request) error {
+	defer lr.mu.Unlock()
+	return lr.inner.Render(w, r)
+}
+
+// lockedRendererHook builds an endpoint.Renderer for a resolved site path while holding a
+// read lock through template execution via lockedRenderer.
+func (s *fsSite) lockedRendererHook(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
+	s.mu.RLock()
+	pg := s.pages[filePath]
+	if pg == nil {
+		s.mu.RUnlock()
+		return nil, nil
+	}
+	view := &site{s: s}
+	f.Close() // page re-reads from its own FS reference at render time
+	renderer, err := pg.Renderer(view, s.layout)
+	if err != nil {
+		s.mu.RUnlock()
+		return nil, err
+	}
+	return &lockedRenderer{mu: s.mu.RLocker(), inner: renderer}, nil
+}
+
 // FileRenderer returns an endpoint.FileRendererHook that looks up the URL path
 // in the site index and, if found, returns a Renderer that calls page.Render.
 // File ownership transfers to the hook on a non-nil return; on nil, nil the
 // hook does not read or close the file.
 func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
-	return func(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
-		pg := s.Get(filePath)
-		if pg == nil {
-			return nil, nil
-		}
-		f.Close() // page re-reads from its own FS reference at render time
-		return pg.Renderer(s, s.layout)
-	}
+	return s.lockedRendererHook
 }
 
 // DirRenderer returns an endpoint.FileRendererHook for directory requests.
@@ -547,12 +595,288 @@ func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
 // parent directory path at NewSite time, so the hook calls site.Get(path)
 // with no ambiguity. On nil, nil the hook does not call ReadDir on the file.
 func (s *fsSite) DirRenderer() endpoint.FileRendererHook {
-	return func(filePath string, fsys fs.FS, f fs.File) (endpoint.Renderer, error) {
-		pg := s.Get(filePath)
-		if pg == nil {
-			return nil, nil
+	return s.lockedRendererHook
+}
+
+// indexCandidate pairs a filesystem path with its directory-index priority.
+type indexCandidate struct {
+	filePath string
+	priority int
+}
+
+// indexCandidates returns the potential index filePaths for dirSitePath in
+// priority order (lowest priority number = highest precedence).
+func indexCandidates(dirSitePath string) []indexCandidate {
+	if dirSitePath == "." {
+		return []indexCandidate{
+			{"index.html", 1},
+			{"index.htm", 2},
+			{"index.md", 3},
 		}
-		f.Close() // page re-reads from its own FS reference at render time
-		return pg.Renderer(s, s.layout)
 	}
+	return []indexCandidate{
+		{dirSitePath + "/index.html", 1},
+		{dirSitePath + "/index.htm", 2},
+		{dirSitePath + "/index.md", 3},
+	}
+}
+
+// Refresh walks the filesystem using stat-only calls, re-parses only files
+// whose ModTime has changed, adds new files, and removes deleted files.
+// It returns the number of files re-parsed (new + changed).
+// On any parse error the index is left unchanged and the error is returned.
+func (s *fsSite) Refresh() (int, error) {
+	// Snapshot fileMeta under a brief read lock so the walk is lock-free.
+	s.mu.RLock()
+	snapshot := make(map[string]fileRecord, len(s.fileMeta))
+	for k, v := range s.fileMeta {
+		snapshot[k] = v
+	}
+	s.mu.RUnlock()
+
+	// Walk FS: collect files whose mtime changed or are new.
+	type pendingFile struct {
+		filePath string
+		sitePath string
+		isIndex  bool
+		priority int
+		modTime  time.Time
+	}
+	seen := make(map[string]struct{})
+	var toProcess []pendingFile
+
+	if err := fs.WalkDir(s.fsys, ".", func(filePath string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		seen[filePath] = struct{}{}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		existing, known := snapshot[filePath]
+		if known && info.ModTime().Equal(existing.modTime) {
+			return nil // unchanged
+		}
+		sp, isIdx, pri := fileSitePath(filePath)
+		toProcess = append(toProcess, pendingFile{filePath, sp, isIdx, pri, info.ModTime()})
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+
+	// Detect deleted files and, for deleted index files, force-re-evaluate
+	// sibling candidates so the next-best index can be promoted.
+	var deleted []string
+	for filePath := range snapshot {
+		if _, ok := seen[filePath]; ok {
+			continue
+		}
+		deleted = append(deleted, filePath)
+		rec := snapshot[filePath]
+		_, isIdx, _ := fileSitePath(filePath)
+		if !isIdx {
+			continue
+		}
+		// Force-check remaining candidates for this directory index.
+		for _, cand := range indexCandidates(rec.sitePath) {
+			if cand.filePath == filePath {
+				continue // this is the one being deleted
+			}
+			if _, alreadySeen := seen[cand.filePath]; !alreadySeen {
+				continue // also deleted or never existed
+			}
+			alreadyPending := false
+			for _, p := range toProcess {
+				if p.filePath == cand.filePath {
+					alreadyPending = true
+					break
+				}
+			}
+			if alreadyPending {
+				continue
+			}
+			// Re-parse this candidate even if its mtime hasn't changed,
+			// so it can take over as the directory index.
+			if rec2, ok := snapshot[cand.filePath]; ok {
+				toProcess = append(toProcess, pendingFile{
+					filePath: cand.filePath,
+					sitePath: rec.sitePath,
+					isIndex:  true,
+					priority: cand.priority,
+					modTime:  rec2.modTime,
+				})
+			}
+		}
+	}
+
+	if len(toProcess) == 0 && len(deleted) == 0 {
+		return 0, nil
+	}
+
+	// Parse changed/new files outside the lock.
+	type parsedFile struct {
+		pendingFile
+		pg Page
+	}
+	parsed := make([]parsedFile, 0, len(toProcess))
+	for _, f := range toProcess {
+		pg, err := newPageFromFS(f.sitePath, s.fsys, f.filePath)
+		if err != nil {
+			return 0, fmt.Errorf("page: refresh %s: %w", f.filePath, err)
+		}
+		if pg != nil {
+			parsed = append(parsed, parsedFile{f, pg})
+		}
+	}
+
+	// Optionally re-discover layouts outside the lock.
+	var newLayout *Layout
+	if s.autoDiscoverLayout {
+		var err error
+		newLayout, err = discoverLayouts(s.fsys)
+		if err != nil {
+			return 0, fmt.Errorf("page: refresh layouts: %w", err)
+		}
+	}
+
+	// Apply all changes under the write lock.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, filePath := range deleted {
+		rec := snapshot[filePath]
+		delete(s.pages, rec.sitePath)
+		delete(s.fileMeta, filePath)
+	}
+
+	// Resolve index file priority for any directory that has competing updates.
+	dirIndexes := make(map[string]indexEntry)
+	count := 0
+	for _, r := range parsed {
+		s.fileMeta[r.filePath] = fileRecord{sitePath: r.sitePath, modTime: r.modTime}
+		if !r.isIndex {
+			s.pages[r.sitePath] = r.pg
+			count++
+			continue
+		}
+		if existing, ok := dirIndexes[r.sitePath]; !ok || r.priority < existing.priority {
+			dirIndexes[r.sitePath] = indexEntry{page: r.pg, priority: r.priority}
+		}
+		count++
+	}
+	for sitePath, entry := range dirIndexes {
+		s.pages[sitePath] = entry.page
+	}
+
+	if s.autoDiscoverLayout && newLayout != nil {
+		s.layout = newLayout
+	}
+
+	s.children = buildChildIndex(s.pages)
+	return count, nil
+}
+
+// UpdateFile re-parses a single file and updates its entry in the index.
+// If filePath is under _layouts/, layout templates are re-discovered.
+// Intended for use by fsnotify write/create event handlers.
+func (s *fsSite) UpdateFile(filePath string) error {
+	sitePath, isIndex, priority := fileSitePath(filePath)
+
+	info, err := fs.Stat(s.fsys, filePath)
+	if err != nil {
+		return fmt.Errorf("page: stat %s: %w", filePath, err)
+	}
+
+	pg, err := newPageFromFS(sitePath, s.fsys, filePath)
+	if err != nil {
+		return fmt.Errorf("page: update %s: %w", filePath, err)
+	}
+
+	var newLayout *Layout
+	if s.autoDiscoverLayout && strings.HasPrefix(filePath, "_layouts/") {
+		newLayout, err = discoverLayouts(s.fsys)
+		if err != nil {
+			return fmt.Errorf("page: update layouts: %w", err)
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if pg != nil {
+		if isIndex {
+			// Keep the entry only if this file wins or ties priority.
+			if existing, ok := s.fileMeta[filePath]; ok {
+				_ = existing // fileMeta updated below
+			}
+			// Check current winner's priority via dirIndexes scan.
+			bestPri := priority
+			for _, cand := range indexCandidates(sitePath) {
+				if cand.filePath == filePath {
+					continue
+				}
+				if _, ok := s.fileMeta[cand.filePath]; ok && cand.priority < bestPri {
+					bestPri = cand.priority
+				}
+			}
+			if priority <= bestPri {
+				s.pages[sitePath] = pg
+			}
+		} else {
+			s.pages[sitePath] = pg
+		}
+		s.fileMeta[filePath] = fileRecord{sitePath: sitePath, modTime: info.ModTime()}
+	}
+
+	if newLayout != nil {
+		s.layout = newLayout
+	}
+
+	s.children = buildChildIndex(s.pages)
+	return nil
+}
+
+// DeleteFile removes a single file's entry from the index.
+// If the file was a directory index, the next-best candidate is promoted.
+// Intended for use by fsnotify remove/rename event handlers.
+func (s *fsSite) DeleteFile(filePath string) {
+	s.mu.RLock()
+	rec, ok := s.fileMeta[filePath]
+	s.mu.RUnlock()
+	if !ok {
+		return
+	}
+
+	_, isIndex, _ := fileSitePath(filePath)
+
+	// If an index file is deleted, find the next-best candidate outside the lock.
+	var fallbackPg Page
+	if isIndex {
+		for _, cand := range indexCandidates(rec.sitePath) {
+			if cand.filePath == filePath {
+				continue
+			}
+			if _, statErr := fs.Stat(s.fsys, cand.filePath); statErr != nil {
+				continue // doesn't exist
+			}
+			pg, err := newPageFromFS(rec.sitePath, s.fsys, cand.filePath)
+			if err == nil && pg != nil {
+				fallbackPg = pg
+				break
+			}
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.pages, rec.sitePath)
+	delete(s.fileMeta, filePath)
+
+	if fallbackPg != nil {
+		s.pages[rec.sitePath] = fallbackPg
+	}
+
+	s.children = buildChildIndex(s.pages)
 }

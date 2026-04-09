@@ -24,7 +24,7 @@ type markdownPage struct {
 func (p *markdownPage) SitePath() string { return p.sitePath }
 func (p *markdownPage) Meta() Meta      { return p.meta }
 
-func (p *markdownPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, error) {
+func (p *markdownPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, error) {
 	if layout == nil {
 		return nil, fmt.Errorf("page: layout is nil")
 	}

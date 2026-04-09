@@ -15,7 +15,7 @@ import (
 type Page interface {
 	SitePath() string
 	Meta() Meta
-	Renderer(site Site, layout *Layout) (endpoint.Renderer, error)
+	Renderer(site *site, layout *Layout) (endpoint.Renderer, error)
 }
 
 // Meta holds the parsed metadata for a page.
@@ -49,7 +49,7 @@ type RenderContext struct {
 	Config  SiteConfig
 	Meta    Meta
 	SitePath string // site-relative path of the current page, e.g. "blog/hello.md" or "." for root
-	Site    Site
+	Site    *site
 	Request *http.Request
 }
 

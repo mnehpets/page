@@ -20,3 +20,4 @@ routes:
   - path: /
     handler: pages
     dir: public
+    watch: true

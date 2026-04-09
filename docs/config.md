@@ -254,6 +254,7 @@ Serves content via the `page` FS library from a local directory.
   dir_list: false         # optional — serve directory listings (default false)
   dotfiles: false         # optional — serve/list dotfiles (default false)
   symlinks: false         # optional — follow symlinks (default false)
+  watch: false            # optional — watch for file changes and refresh index (default false)
 ```
 
 | Field | Type | Default | Description |
@@ -263,8 +264,15 @@ Serves content via the `page` FS library from a local directory.
 | `dir_list` | bool | `false` | Serve HTML directory listings |
 | `dotfiles` | bool | `false` | Serve and list dotfiles |
 | `symlinks` | bool | `false` | Follow symlinks |
+| `watch` | bool | `false` | Watch `dir` for file changes and refresh the page index without restarting |
 
 `dotfiles` and `symlinks` affect both serving and listing.
+
+**`watch` behaviour:** when enabled, a filesystem watcher (fsnotify) monitors `dir` and updates the
+in-memory page index automatically. File creates and writes re-parse the affected file; removes and
+renames drop it (with directory-index fallback). Events are debounced at 400 ms to coalesce editor
+save sequences. The count of refreshed files is exposed in expvar at
+`pageserve.route.<name>.refreshed_files`, visible via the `defaultmux` handler at `/debug/vars`.
 
 #### `files`
 
@@ -274,7 +282,7 @@ Serves a directory tree as raw files via `http.FileServer` semantics.
 - path: /assets/
   handler: files
   dir: ./static           # required — source directory
-  dirlist: false          # optional — serve directory listings (default false)
+  dir_list: false         # optional — serve directory listings (default false)
   index_html: true        # optional — serve index.html for directories (default true)
   dotfiles: false         # optional — serve/list dotfiles (default false)
   symlinks: false         # optional — follow symlinks (default false)
@@ -283,7 +291,7 @@ Serves a directory tree as raw files via `http.FileServer` semantics.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `dir` | string | — | **Required.** Source directory |
-| `dirlist` | bool | `false` | Serve HTML directory listings |
+| `dir_list` | bool | `false` | Serve HTML directory listings |
 | `index_html` | bool | `true` | Serve `index.html` for directory requests |
 | `dotfiles` | bool | `false` | Serve and list dotfiles |
 | `symlinks` | bool | `false` | Follow symlinks |

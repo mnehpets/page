@@ -18,6 +18,7 @@ import (
 // A context cancellation is treated as a normal shutdown; Serve returns nil
 // in that case. Any other error is returned as-is.
 func Serve(ctx context.Context, cfg Config, srv *Server) error {
+	defer srv.cancel()
 	n := len(cfg.Server.Listeners)
 	if n == 0 {
 		return fmt.Errorf("pageserve: no listeners configured")

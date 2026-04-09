@@ -1,6 +1,7 @@
 package pageserve
 
 import (
+	"context"
 	"expvar"
 	"fmt"
 	"maps"
@@ -21,6 +22,8 @@ type Server struct {
 	SessionProc endpoint.Processor
 	AuthHandler *httpauth.AuthHandler // nil if no auth route is configured
 	mux         *http.ServeMux
+	ctx         context.Context    // cancelled when the server shuts down
+	cancel      context.CancelFunc // called by Serve on exit
 }
 
 // ServeHTTP implements http.Handler.
@@ -103,6 +106,7 @@ func Build(cfg Config, opts ...BuildOption) (*Server, error) {
 
 	// Initialise server-level resources: session processor and auth handler.
 	srv := &Server{}
+	srv.ctx, srv.cancel = context.WithCancel(context.Background())
 	if err := initAuth(cfg, cfg.Routes, srv); err != nil {
 		return nil, err
 	}

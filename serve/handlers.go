@@ -10,10 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	mnfs "github.com/mnehpets/fs"
 	"github.com/mnehpets/http/endpoint"
 	"github.com/mnehpets/page"
+	"github.com/zserge/metric"
 	"gopkg.in/yaml.v3"
 )
 
@@ -60,6 +64,7 @@ type pagesBuilder struct {
 	DirList       bool   `yaml:"dir_list"`
 	Dotfiles      bool   `yaml:"dotfiles"`
 	Symlinks      bool   `yaml:"symlinks"`
+	Watch         bool   `yaml:"watch"`
 }
 
 func (b *pagesBuilder) Validate(cfg Config) error { return nil }
@@ -87,6 +92,30 @@ func (b *pagesBuilder) Build(cfg Config, srv *Server, routePath string) ([]Route
 		return nil, fmt.Errorf("pages (path=%q): %w", b.Path, err)
 	}
 
+	// Per-route counter for refreshed files, mirroring the requests counter in
+	// wrapWithStats. Visible at /debug/vars under pageserve.route.<name>.refreshed_files.
+	refreshed := metric.NewCounter("15m1m", "1h5m", "24h1h")
+	expvarMap("pageserve.route."+sanitizeExpvarName(routePath)).Set("refreshed_files", refreshed)
+
+	if b.Watch {
+		if r, ok := site.(page.Refreshable); ok {
+			absDir, err := filepath.Abs(dir)
+			if err != nil {
+				return nil, fmt.Errorf("pages (path=%q): watch abs dir: %w", b.Path, err)
+			}
+			watcher, err := fsnotify.NewWatcher()
+			if err != nil {
+				return nil, fmt.Errorf("pages (path=%q): watch: %w", b.Path, err)
+			}
+			// Add the root and every existing subdirectory — fsnotify is non-recursive.
+			if err := addWatchDirs(watcher, absDir); err != nil {
+				watcher.Close()
+				return nil, fmt.Errorf("pages (path=%q): watch %s: %w", b.Path, absDir, err)
+			}
+			go runWatcher(srv.ctx, watcher, absDir, r, refreshed)
+		}
+	}
+
 	noLayouts, err := mnfs.WithGlob("_layouts/*", mnfs.Disallowed)
 	if err != nil {
 		return nil, fmt.Errorf("pages (path=%q): _layouts filter: %w", b.Path, err)
@@ -109,6 +138,92 @@ func (b *pagesBuilder) Build(cfg Config, srv *Server, routePath string) ([]Route
 		DirRenderer:      site.DirRenderer(),
 	}).Endpoint
 	return []RouteEntry{{Pattern: withSubPath(routePath), Endpoint: ep}}, nil
+}
+
+// addWatchDirs adds root and every subdirectory under it to w.
+// fsnotify is non-recursive on Linux; we must add each directory explicitly.
+func addWatchDirs(w *fsnotify.Watcher, root string) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return err
+		}
+		return w.Add(path)
+	})
+}
+
+// runWatcher reads fsnotify events and calls UpdateFile/DeleteFile on the site
+// with per-file debounce. It exits when ctx is done.
+func runWatcher(ctx context.Context, w *fsnotify.Watcher, dir string, r page.Refreshable, counter metric.Metric) {
+	defer w.Close()
+
+	// debounce: filePath → pending timer
+	timers := make(map[string]*time.Timer)
+	var mu sync.Mutex
+
+	fire := func(filePath string, remove bool) {
+		mu.Lock()
+		delete(timers, filePath)
+		mu.Unlock()
+		if remove {
+			r.DeleteFile(filePath)
+			counter.Add(1)
+		} else {
+			if err := r.UpdateFile(filePath); err == nil {
+				counter.Add(1)
+			}
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			mu.Lock()
+			for _, t := range timers {
+				t.Stop()
+			}
+			mu.Unlock()
+			return
+		case event, ok := <-w.Events:
+			if !ok {
+				return
+			}
+			// New directory: add it so files created inside are watched too.
+			if event.Has(fsnotify.Create) {
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+					w.Add(event.Name) //nolint:errcheck
+					continue
+				}
+			}
+			// Only process write/create/remove/rename; skip Chmod etc.
+			if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) &&
+				!event.Has(fsnotify.Remove) && !event.Has(fsnotify.Rename) {
+				continue
+			}
+			// Convert absolute path to FS-relative path.
+			rel, err := filepath.Rel(dir, event.Name)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				continue
+			}
+			// Normalise to forward slashes (Windows).
+			rel = filepath.ToSlash(rel)
+
+			remove := event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename)
+
+			mu.Lock()
+			if t, exists := timers[rel]; exists {
+				t.Stop()
+			}
+			timers[rel] = time.AfterFunc(400*time.Millisecond, func() {
+				fire(rel, remove)
+			})
+			mu.Unlock()
+		case _, ok := <-w.Errors:
+			if !ok {
+				return
+			}
+			// Watcher errors are non-fatal; the site continues serving the last index.
+		}
+	}
 }
 
 func pagesHandlerFactory() HandlerFactory {
@@ -313,8 +428,8 @@ func opaqueHandlerEndpoint(h http.Handler) Endpoint {
 // withSubPath appends /{path...} to a mux pattern, handling optional method prefixes.
 // "/notes/" → "/notes/{path...}", "GET /notes/" → "GET /notes/{path...}"
 func withSubPath(pattern string) string {
-	if i := strings.Index(pattern, " "); i != -1 {
-		return pattern[:i+1] + strings.TrimSuffix(pattern[i+1:], "/") + "/{path...}"
+	if method, path, ok := strings.Cut(pattern, " "); ok {
+		return method + " " + strings.TrimSuffix(path, "/") + "/{path...}"
 	}
 	return strings.TrimSuffix(pattern, "/") + "/{path...}"
 }
@@ -328,7 +443,7 @@ type filteredFS struct {
 
 func (f *filteredFS) Open(name string) (fs.File, error) {
 	if !f.dotfiles {
-		for _, part := range strings.Split(name, "/") {
+		for part := range strings.SplitSeq(name, "/") {
 			if part != "." && part != ".." && strings.HasPrefix(part, ".") {
 				return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 			}
@@ -347,8 +462,8 @@ func (f *filteredFS) Open(name string) (fs.File, error) {
 // routePathOnly returns the path part of a ServeMux pattern, stripping any
 // leading method prefix (e.g. "GET /notes/" → "/notes/").
 func routePathOnly(pattern string) string {
-	if i := strings.Index(pattern, " "); i != -1 {
-		return pattern[i+1:]
+	if _, path, ok := strings.Cut(pattern, " "); ok {
+		return path
 	}
 	return pattern
 }

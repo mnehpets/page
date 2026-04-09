@@ -25,7 +25,7 @@ type htmlPage struct {
 func (p *htmlPage) SitePath() string { return p.sitePath }
 func (p *htmlPage) Meta() Meta      { return p.meta }
 
-func (p *htmlPage) Renderer(site Site, layout *Layout) (endpoint.Renderer, error) {
+func (p *htmlPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, error) {
 	if layout == nil {
 		return nil, fmt.Errorf("page: layout is nil")
 	}
