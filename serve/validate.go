@@ -41,8 +41,8 @@ func validate(cfg Config, customHandlers map[string]HandlerFactory) error {
 			}
 		}
 	}
-	if len(cfg.Session.Keys) == 0 {
-		errs = append(errs, "session.keys: at least one key is required")
+	if needsSession(cfg) && len(cfg.Session.Keys) == 0 {
+		errs = append(errs, "session.keys: at least one key is required when access policies or auth routes are configured")
 	}
 
 	// Secret field resolution: all declared env vars must be present.
@@ -100,4 +100,19 @@ func validate(cfg Config, customHandlers map[string]HandlerFactory) error {
 		return fmt.Errorf("pageserve: config validation failed:\n  %s", strings.Join(errs, "\n  "))
 	}
 	return nil
+}
+
+// needsSession reports whether the config requires a session processor.
+// A session is needed when access policies are defined or any route uses an
+// access policy or an auth handler.
+func needsSession(cfg Config) bool {
+	if len(cfg.Access) > 0 {
+		return true
+	}
+	for _, r := range cfg.Routes {
+		if r.Access != "" || r.Handler == "auth" {
+			return true
+		}
+	}
+	return false
 }

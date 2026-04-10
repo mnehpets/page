@@ -47,17 +47,19 @@ func authHandlerFactory() HandlerFactory {
 // and, if an auth route is declared, the OAuth handler.
 // It must be called before any route handler is built.
 func initAuth(cfg Config, routes []RouteConfig, srv *Server) error {
-	sessProc, err := newSessionProcessor(cfg)
-	if err != nil {
-		return err
+	if len(cfg.Session.Keys) > 0 {
+		sessProc, err := newSessionProcessor(cfg)
+		if err != nil {
+			return err
+		}
+		srv.SessionProc = sessProc
 	}
-	srv.SessionProc = sessProc
 
 	for _, r := range routes {
 		if r.Handler != "auth" {
 			continue
 		}
-		ah, err := newOAuthHandler(cfg, r, sessProc)
+		ah, err := newOAuthHandler(cfg, r, srv.SessionProc)
 		if err != nil {
 			return fmt.Errorf("pageserve: build route %q: %w", r.Path, err)
 		}

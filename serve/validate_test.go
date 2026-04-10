@@ -64,8 +64,17 @@ func TestValidate_EmptyCookieName_IsValid(t *testing.T) {
 func TestValidate_NoSessionKeys(t *testing.T) {
 	cfg := resolvedConfig()
 	cfg.Session.Keys = nil
+	cfg.Access = map[string]AccessPolicy{"members": {Allow: []string{"*@example.com"}}}
 	err := validate(cfg, nil)
 	assertValidationError(t, err, "session.keys")
+}
+
+func TestValidate_NoSessionKeys_NoAuthFeatures(t *testing.T) {
+	cfg := resolvedConfig()
+	cfg.Session.Keys = nil
+	if err := validate(cfg, nil); err != nil {
+		t.Errorf("session keys should not be required when no auth features are configured: %v", err)
+	}
 }
 
 func TestValidate_UnresolvedClientSecret(t *testing.T) {
@@ -142,7 +151,8 @@ func TestValidate_CustomHandlerType_Registered(t *testing.T) {
 }
 
 func TestValidate_MultipleErrors(t *testing.T) {
-	cfg := Config{} // empty — many required fields missing
+	// Access policy present but no listeners or session keys.
+	cfg := Config{Access: map[string]AccessPolicy{"members": {Allow: []string{"*@example.com"}}}}
 	err := validate(cfg, nil)
 	if err == nil {
 		t.Fatal("expected errors for empty config")

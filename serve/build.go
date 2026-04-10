@@ -172,7 +172,10 @@ func Build(cfg Config, opts ...BuildOption) (*Server, error) {
 
 		// Assemble the processor stack for this route: security headers, session,
 		// and optionally an authn check when an access policy is declared.
-		procs := []endpoint.Processor{securityProc, srv.SessionProc}
+		procs := []endpoint.Processor{securityProc}
+		if srv.SessionProc != nil {
+			procs = append(procs, srv.SessionProc)
+		}
 		if r.Access != "" {
 			policy, ok := cfg.Access[r.Access]
 			if !ok {

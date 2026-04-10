@@ -11,8 +11,8 @@ startup from a separate `secrets.env` file (or any other source the caller provi
 | Section | Required | Description |
 |---|---|---|
 | `server` | yes | Network listener configuration |
-| `oauth` | yes (if auth routes exist) | OAuth provider list |
-| `session` | yes (if auth routes exist) | Session cookie configuration |
+| `oauth` | yes (if auth routes are configured) | OAuth provider list |
+| `session` | yes (if access policies or auth routes are configured) | Session cookie configuration |
 | `access` | no | Named email allow-list policies |
 | `csp` | no | Content-Security-Policy directive extensions |
 | `cors` | no | Cross-origin resource sharing settings |
@@ -86,7 +86,7 @@ session:
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `cookie_name` | string | no | Name of the session cookie. Omit to use the middleware default |
-| `keys` | list | yes | At least one signing key entry |
+| `keys` | list | yes (if session section is present) | At least one signing key entry |
 | `keys[].id` | string | yes | Opaque key identifier used for rotation |
 | `keys[].env` | string | yes | Name of env var holding the key bytes (base64-encoded) |
 
