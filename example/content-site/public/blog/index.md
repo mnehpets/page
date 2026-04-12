@@ -1,4 +1,4 @@
 ---
 title: Blog
-layouts: [blog-index, default]
+layout: blog-index
 ---

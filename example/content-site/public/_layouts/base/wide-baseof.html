@@ -1,0 +1,15 @@
+{{define "wide-baseof"}}<!DOCTYPE html>
+<html lang="{{or .Config.Lang "en"}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Meta.Title}}</title>
+  <link rel="stylesheet" href="/style.css">
+  {{with .JSONLD}}<script type="application/ld+json">{{.}}</script>{{end}}
+  {{.Head}}
+</head>
+<body>
+  <main class="wide">{{block "main" .}}{{end}}</main>
+</body>
+</html>
+{{end}}
