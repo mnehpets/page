@@ -1,14 +1,60 @@
 # Template API
 
-Layout templates are standard Go `html/template` files. When a page is rendered,
-the template named by the page's `layout` (or `default` if none is declared)
-receives a `RenderContext` value as its dot (`.`).
+Layout templates are standard Go `html/template` files stored under `_layouts/`.
+
+## Layout directory structure
+
+```
+_layouts/
+  base/
+    baseof.html    ← common base template; defines "baseof" and calls {{block "main" .}}
+    nav.html       ← any other shared templates called from baseof
+  default.html     ← "default" entry-point template; defines its own {{define "main"}}
+  post.html        ← "post" entry-point template; defines its own {{define "main"}}
+```
+
+Content declares a single `layout:` name (e.g. `layout: post`). The renderer
+picks the matching entry-point template, combines it with the base templates,
+and executes `baseof`. The entry-point's `{{define "main"}}` block overrides
+the `{{block "main" .}}` placeholder in the base.
+
+**`baseof` is the default execution entry point** (borrowed from Hugo) — when
+base templates are present the renderer executes `baseof` unless overridden.
+
+An entry-point template can select a different entry point by defining a
+`"basename"` template whose text body is the desired template name:
+
+```html
+{{define "basename"}}wide-baseof{{end}}
+```
+
+The renderer executes this template with no data, trims whitespace from the
+result, and uses it as the entry-point name. The named template must be defined
+in one of the base files. This allows multiple layouts to share the same base
+directory while each routing to a different outer shell.
+
+An entry-point template can also define `{{define "baseof"}}` inline to replace
+the base shell entirely for that layout. This is useful for layouts that produce
+non-HTML output (XML sitemaps, Atom feeds) where the standard `<html>` wrapper
+is unwanted — the entry-point's definition wins because it is parsed after the
+base files.
+
+When no `_layouts/base/` directory is present the entry-point template is
+executed directly by its own defined template name — a simpler mode suitable
+for sites that don't need a shared outer structure.
+
+When a page doesn't have a `layout:` declaration, the `default` entry-point is used.
+
+---
+
+When a page is rendered, the `RenderContext` value is the dot (`.`) for the
+executing template.
 
 ## RenderContext fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `.Content` | `template.HTML` | The rendered page body — safe HTML, not escaped again. For markdown pages this is the converted HTML; for HTML pages it is the inner HTML of `<body>`. In a multi-step layout chain each step's output becomes `.Content` for the next. |
+| `.Content` | `template.HTML` | The rendered page body — safe HTML, not escaped again. For markdown pages this is the converted HTML; for HTML pages it is the inner HTML of `<body>`. |
 | `.Head` | `template.HTML` | Extra `<head>` elements from an HTML page (everything except `<title>`, recognised `<meta>` tags, and JSON-LD). Empty for markdown pages. |
 | `.JSONLD` | `template.JS` | A schema.org JSON-LD blob ready to drop into `<script type="application/ld+json">{{ .JSONLD }}</script>`. Empty string when no metadata was available. |
 | `.Meta` | `Meta` | Parsed page metadata. See the [Meta fields](#meta-fields) table below. |
@@ -43,7 +89,7 @@ Accessed as `.Meta.FieldName` in a template.
 | `.Meta.Image.Alt` | `string` | Alt text for the representative image. |
 | `.Meta.Slug` | `string` | URL-friendly identifier. Derived from the file name if not set explicitly. |
 | `.Meta.LinkTitle` | `string` | Short title for navigation links. Falls back to `.Meta.Title` when empty. |
-| `.Meta.Layouts` | `[]string` | The layout pipeline for this page. Rarely needed inside a template. |
+| `.Meta.Layout` | `string` | The layout name for this page. Rarely needed inside a template. |
 | `.Meta.Draft` | `bool` | Whether this page is a draft. |
 | `.Meta.ContentType` | `string` | MIME type of the HTTP response (e.g. `application/xml`). Defaults to `text/html`. |
 
@@ -99,53 +145,34 @@ These functions are available in all layout templates.
 | `safeHTML` | `safeHTML "string"` | Marks a string as safe HTML, bypassing contextual escaping. Use only with trusted, statically-known strings — never with user input. |
 | `parentPath` | `parentPath "blog/post.md"` | Returns the parent path. `parentPath("blog/post.md")` → `"blog"`, `parentPath("blog")` → `"."`, `parentPath(".")` → `""`. Pure string operation; does not consult the site index. |
 
-## Layout chains
-
-A page can declare a multi-step rendering pipeline via the `layouts` frontmatter
-key. Each template except the last renders into a buffer; its output becomes
-`.Content` for the next step. This is useful for wrapping content in intermediate
-containers before the outer page shell is applied.
-
-```yaml
-# Render body → "article" → "page"
-layouts: [article, page]
-```
-
-If no layout is declared, the template named `default` is used.
-
 ## Examples
 
 ### Blog index listing recent posts
 
+`_layouts/default.html` — entry-point used when no `layout:` is declared:
+
 ```html
-{{ define "default" }}
-<!DOCTYPE html>
-<html lang="{{ .Config.Lang }}">
-<head>
-  <meta charset="utf-8">
-  <title>{{ .Config.Name }}</title>
-  {{ .Head }}
-</head>
-<body>
-  <h1>Recent posts</h1>
-  <ul>
-  {{- range sortByDate (.Site.ByCollection "posts") }}
-    <li>
-      <a href="{{ $.Href . }}">{{ .Meta.Title }}</a>
-      — {{ .Meta.Date.Format "2 January 2006" }}
-    </li>
-  {{- end }}
-  </ul>
-</body>
-</html>
+{{ define "main" }}
+<h1>Recent posts</h1>
+<ul>
+{{- range sortByDate (.Site.ByCollection "posts") }}
+  <li>
+    <a href="{{ $.Href . }}">{{ .Meta.Title }}</a>
+    — {{ .Meta.Date.Format "2 January 2006" }}
+  </li>
+{{- end }}
+</ul>
 {{ end }}
 ```
 
 ### XML sitemap
 
+`_layouts/sitemap.html` — a standalone layout that owns its full output.
+Because it defines `baseof` itself, it replaces the base template's HTML shell
+for this layout only:
+
 ```html
-{{ define "sitemap" }}
-{{ safeHTML "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }}
+{{ define "baseof" }}{{ safeHTML "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }}
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {{- range .Site.ByTag "mime:text/html" }}
 {{- if not (hasTag .Meta "noindex") }}
@@ -158,8 +185,9 @@ If no layout is declared, the template named `default` is used.
 {{ end }}
 ```
 
-The sitemap page would declare `contentType: application/xml` so the response
-is served with the correct MIME type, and `layout: sitemap` to select the template above.
+The sitemap page declares `contentType: application/xml` and `layout: sitemap`.
+Defining `baseof` in the entry-point file overrides the base template's
+`baseof` for this layout, so no HTML wrapper is emitted.
 
 ### Navigation sidebar
 
@@ -202,19 +230,59 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
 {{ end }}
 ```
 
-### Injecting JSON-LD and passing data to JavaScript
+### Multiple base templates
+
+When a site needs more than one outer HTML shell (e.g. a standard page and a
+full-width landing page), add a second base template to `_layouts/base/` and
+point each layout that needs it at the right one via `basename`.
+
+`_layouts/base/baseof.html` — standard shell with a sidebar slot:
 
 ```html
-{{ define "article" }}
-<article>
-  {{- if .JSONLD }}
-  <script type="application/ld+json">{{ .JSONLD }}</script>
-  {{- end }}
-  {{ .Content }}
-</article>
+{{ define "baseof" }}
+<!DOCTYPE html>
+<html>
+<body>
+  <aside>{{ block "sidebar" . }}{{ end }}</aside>
+  <main>{{ block "main" . }}{{ end }}</main>
+</body>
+</html>
 {{ end }}
+```
 
-{{ define "page" }}
+`_layouts/base/wide-baseof.html` — full-width shell, no sidebar:
+
+```html
+{{ define "wide-baseof" }}
+<!DOCTYPE html>
+<html>
+<body>
+  <main class="wide">{{ block "main" . }}{{ end }}</main>
+</body>
+</html>
+{{ end }}
+```
+
+`_layouts/landing.html` — selects the wide shell:
+
+```html
+{{define "basename"}}wide-baseof{{end}}
+
+{{define "main"}}
+<section class="hero">{{ .Content }}</section>
+{{end}}
+```
+
+All other entry-point templates that do not define `basename` continue to use
+`baseof`. The base files are compiled into every layout's template set, so
+`wide-baseof` is available to any layout that asks for it.
+
+### Injecting JSON-LD and passing data to JavaScript
+
+`_layouts/base/baseof.html` — the shared outer shell:
+
+```html
+{{ define "baseof" }}
 <!DOCTYPE html>
 <html lang="{{ .Config.Lang }}">
 <head>
@@ -226,8 +294,25 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
   </script>
 </head>
 <body>
-  {{ .Content }}
+  {{ block "main" . }}{{ end }}
 </body>
 </html>
 {{ end }}
 ```
+
+`_layouts/article.html` — entry-point for article pages:
+
+```html
+{{ define "main" }}
+<article>
+  {{- if .JSONLD }}
+  <script type="application/ld+json">{{ .JSONLD }}</script>
+  {{- end }}
+  {{ .Content }}
+</article>
+{{ end }}
+```
+
+Content declares `layout: article`. The renderer combines `baseof.html` with
+`article.html`, executes `baseof`, and the `{{block "main" .}}` is filled by
+`article.html`'s `{{define "main"}}`.

@@ -40,7 +40,6 @@ Page body starts here.
 | `tags` | list of strings | Tags for querying via `.Site.ByTag`. |
 | `collection` | string | Collection name for `.Site.ByCollection`. |
 | `layout` | string | Name of the layout template to use. Defaults to `default`. |
-| `layouts` | list of strings | Multi-step layout pipeline (each step wraps the previous). |
 | `draft` | bool | If `true`, the page is excluded from `.Site.All`, `.Site.ByTag`, and `.Site.ByCollection`. |
 | `slug` | string | URL-friendly identifier. Derived from the file name if omitted. |
 | `linkTitle` | string | Short title for navigation links (breadcrumbs, sidebars). Falls back to `title` when empty. |
@@ -105,8 +104,7 @@ stripped before the blob is passed to templates (so it never leaks to end users)
 
 | Key | Maps to | Description |
 |-----|---------|-------------|
-| `layout` | `Meta.Layouts` | Single layout template name. |
-| `layouts` | `Meta.Layouts` | Multi-step layout pipeline (array). |
+| `layout` | `Meta.Layout` | Layout template name. |
 | `collection` | `Meta.Collection` | Collection name. |
 | `slug` | `Meta.Slug` | URL-friendly identifier. |
 | `draft` | `Meta.Draft` | Exclude from site indexes when `true`. |
