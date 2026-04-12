@@ -11,9 +11,9 @@ import (
 func makeTestLayout(t *testing.T, define string) *Layout {
 	t.Helper()
 	fsys := fstest.MapFS{
-		"layout.html": {Data: []byte(define)},
+		"default.html": {Data: []byte(define)},
 	}
-	l, err := NewLayout(fsys, "layout.html")
+	l, err := NewLayout(fsys, nil, []string{"default.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
@@ -144,7 +144,12 @@ func TestMarkdownPage_NilLayoutReturnsError(t *testing.T) {
 		t.Fatalf("newMarkdownPageFromFS: %v", err)
 	}
 
-	if _, err := pg.Renderer(nil, nil); err == nil {
+	renderer, err := pg.Renderer(nil, nil)
+	if err != nil {
+		t.Fatalf("Renderer: %v", err)
+	}
+	w := httptest.NewRecorder()
+	if err := renderer.Render(w, httptest.NewRequest("GET", "/post.md", nil)); err == nil {
 		t.Error("expected error with nil layout")
 	}
 }

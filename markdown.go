@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"net/http"
 
 	"github.com/mnehpets/http/endpoint"
 	"github.com/yuin/goldmark"
@@ -20,13 +19,9 @@ type markdownPage struct {
 }
 
 func (p *markdownPage) SitePath() string { return p.sitePath }
-func (p *markdownPage) Meta() Meta      { return p.meta }
+func (p *markdownPage) Meta() Meta       { return p.meta }
 
 func (p *markdownPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, error) {
-	if layout == nil {
-		return nil, fmt.Errorf("page: layout is nil")
-	}
-
 	src, err := p.source()
 	if err != nil {
 		return nil, fmt.Errorf("page: read %s: %w", p.sitePath, err)
@@ -38,17 +33,13 @@ func (p *markdownPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, 
 	}
 
 	content := template.HTML(buf.String())
-	chain := layoutChain(p.meta)
 	var cfg SiteConfig
 	if site != nil {
 		cfg = site.Config()
 	}
-	meta, jsonld, tmpl := p.meta, metaToJSONLD(p.meta), layout.Template()
-
-	return endpoint.RendererFunc(func(w http.ResponseWriter, r *http.Request) error {
-		ctx := RenderContext{Content: content, JSONLD: jsonld, Config: cfg, Meta: meta, SitePath: p.sitePath, Site: site, Request: r}
-		return renderChain(w, r, tmpl, chain, ctx)
-	}), nil
+	meta, jsonld := p.meta, metaToJSONLD(p.meta)
+	ctx := RenderContext{Content: content, JSONLD: jsonld, Config: cfg, Meta: meta, SitePath: p.sitePath, Site: site}
+	return layout.renderer(layoutName(meta), ctx), nil
 }
 
 func (p *markdownPage) source() ([]byte, error) {

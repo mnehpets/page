@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
-	"net/http"
 	"strings"
 	"time"
 
@@ -23,13 +22,9 @@ type htmlPage struct {
 }
 
 func (p *htmlPage) SitePath() string { return p.sitePath }
-func (p *htmlPage) Meta() Meta      { return p.meta }
+func (p *htmlPage) Meta() Meta       { return p.meta }
 
 func (p *htmlPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, error) {
-	if layout == nil {
-		return nil, fmt.Errorf("page: layout is nil")
-	}
-
 	raw, err := p.source()
 	if err != nil {
 		return nil, fmt.Errorf("page: read %s: %w", p.sitePath, err)
@@ -40,17 +35,13 @@ func (p *htmlPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, erro
 		return nil, fmt.Errorf("page: parse html %s: %w", p.sitePath, err)
 	}
 
-	chain := layoutChain(p.meta)
 	var cfg SiteConfig
 	if site != nil {
 		cfg = site.Config()
 	}
-	meta, tmpl := p.meta, layout.Template()
-
-	return endpoint.RendererFunc(func(w http.ResponseWriter, r *http.Request) error {
-		ctx := RenderContext{Content: body, Head: head, JSONLD: jsonld, Config: cfg, Meta: meta, SitePath: p.sitePath, Site: site, Request: r}
-		return renderChain(w, r, tmpl, chain, ctx)
-	}), nil
+	meta := p.meta
+	ctx := RenderContext{Content: body, Head: head, JSONLD: jsonld, Config: cfg, Meta: meta, SitePath: p.sitePath, Site: site}
+	return layout.renderer(layoutName(meta), ctx), nil
 }
 
 func (p *htmlPage) source() ([]byte, error) {
@@ -84,7 +75,7 @@ func newHTMLPageFromFS(sitePath string, fsys fs.FS, filePath string) (*htmlPage,
 	if err != nil {
 		return nil, fmt.Errorf("page: parse %s: %w", filePath, err)
 	}
-	if len(meta.Layouts) == 0 {
+	if meta.Layout == "" {
 		return nil, nil // no layout declared — serve as static file
 	}
 	if meta.Slug == "" {
@@ -321,16 +312,9 @@ func buildHTMLMeta(jsonLD map[string]any, metaTags map[string]string, titleText 
 
 		// Site-specific fields in the "site" namespace object.
 		if siteLD, ok := jsonLD["site"].(map[string]any); ok {
-			// layout: "name"  or  layouts: ["a", "b"]
+			// layout: "name"
 			if s, ok := siteLD["layout"].(string); ok && s != "" {
-				meta.Layouts = []string{s}
-			}
-			if seq, ok := siteLD["layouts"].([]any); ok {
-				for _, v := range seq {
-					if s, ok := v.(string); ok && s != "" {
-						meta.Layouts = append(meta.Layouts, s)
-					}
-				}
+				meta.Layout = s
 			}
 			meta.Collection, _ = siteLD["collection"].(string)
 			meta.Slug, _ = siteLD["slug"].(string)

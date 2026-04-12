@@ -53,8 +53,8 @@ func TestHTMLPage_JSONLDParsed(t *testing.T) {
 	if m.Description != "A description." {
 		t.Errorf("Description = %q", m.Description)
 	}
-	if len(m.Layouts) != 1 || m.Layouts[0] != "post" {
-		t.Errorf("Layouts = %v", m.Layouts)
+	if m.Layout != "post" {
+		t.Errorf("Layout = %q", m.Layout)
 	}
 	if m.Collection != "blog" {
 		t.Errorf("Collection = %q", m.Collection)

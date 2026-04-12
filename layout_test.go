@@ -2,10 +2,13 @@ package page
 
 import (
 	"io"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
+
+// --- NewLayout ---
 
 func TestNewLayout_ParsesTemplates(t *testing.T) {
 	fsys := fstest.MapFS{
@@ -13,58 +16,136 @@ func TestNewLayout_ParsesTemplates(t *testing.T) {
 		"_layouts/post.html":    {Data: []byte(`{{define "post"}}<article>{{.Content}}</article>{{end}}`)},
 	}
 
-	l, err := NewLayout(fsys, "_layouts/*.html")
+	l, err := NewLayout(fsys, nil, []string{"_layouts/*.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
-	if l == nil {
-		t.Fatal("Layout should not be nil")
-	}
 
-	// Execute "default" template.
-	var buf strings.Builder
-	if err := l.Template().ExecuteTemplate(&buf, "default", RenderContext{Content: "hello"}); err != nil {
-		t.Fatalf("ExecuteTemplate default: %v", err)
+	// "default" layout: execute by its own template name (no base templates).
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	if err := l.renderer("default", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
+		t.Fatalf("renderer default: %v", err)
 	}
-	if got := buf.String(); got != "<html>hello</html>" {
+	if got := rr.Body.String(); got != "<html>hello</html>" {
 		t.Errorf("default output = %q", got)
 	}
 
-	// Execute "post" template.
-	buf.Reset()
-	if err := l.Template().ExecuteTemplate(&buf, "post", RenderContext{Content: "world"}); err != nil {
-		t.Fatalf("ExecuteTemplate post: %v", err)
+	// "post" layout.
+	rr = httptest.NewRecorder()
+	if err := l.renderer("post", RenderContext{Content: "world"}).Render(rr, req); err != nil {
+		t.Fatalf("renderer post: %v", err)
 	}
-	if got := buf.String(); got != "<article>world</article>" {
+	if got := rr.Body.String(); got != "<article>world</article>" {
 		t.Errorf("post output = %q", got)
 	}
 }
 
-func TestNewLayout_UnknownNameReturnsError(t *testing.T) {
+func TestNewLayout_BlockInheritance(t *testing.T) {
 	fsys := fstest.MapFS{
-		"tmpl.html": {Data: []byte(`{{define "default"}}ok{{end}}`)},
+		"_layouts/base/baseof.html": {Data: []byte(`{{define "baseof"}}<html><body>{{block "main" .}}{{end}}</body></html>{{end}}`)},
+		"_layouts/default.html":     {Data: []byte(`{{define "main"}}{{.Content}}{{end}}`)},
+		"_layouts/container.html":   {Data: []byte(`{{define "main"}}<div class="container">{{.Content}}</div>{{end}}`)},
 	}
-	l, err := NewLayout(fsys, "tmpl.html")
+
+	l, err := NewLayout(fsys, []string{"_layouts/base/*"}, []string{"_layouts/default.html", "_layouts/container.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
 
-	if err := l.Template().ExecuteTemplate(io.Discard, "nonexistent", nil); err == nil {
-		t.Error("expected error for unknown template name")
+	// "default" via baseof → main block renders bare content.
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	if err := l.renderer("default", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
+		t.Fatalf("renderer default: %v", err)
+	}
+	if got, want := rr.Body.String(), "<html><body>hello</body></html>"; got != want {
+		t.Errorf("default output = %q, want %q", got, want)
+	}
+
+	// "container" via baseof → main block wraps content in div.
+	rr = httptest.NewRecorder()
+	if err := l.renderer("container", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
+		t.Fatalf("renderer container: %v", err)
+	}
+	if got, want := rr.Body.String(), `<html><body><div class="container">hello</div></body></html>`; got != want {
+		t.Errorf("container output = %q, want %q", got, want)
 	}
 }
 
-func TestNewLayout_EmptyPatternReturnsError(t *testing.T) {
-	fsys := fstest.MapFS{}
-	if _, err := NewLayout(fsys, "*.html"); err == nil {
-		t.Error("expected error when no files match pattern")
+func TestNewLayout_CustomBasename(t *testing.T) {
+	fsys := fstest.MapFS{
+		"_layouts/base/baseof.html":      {Data: []byte(`{{define "baseof"}}<html><body>{{block "main" .}}{{end}}</body></html>{{end}}`)},
+		"_layouts/base/wide-baseof.html": {Data: []byte(`{{define "wide-baseof"}}<div class="wide">{{block "main" .}}{{end}}</div>{{end}}`)},
+		"_layouts/default.html":          {Data: []byte(`{{define "main"}}{{.Content}}{{end}}`)},
+		"_layouts/wide.html":             {Data: []byte(`{{define "basename"}}wide-baseof{{end}}{{define "main"}}<main>{{.Content}}</main>{{end}}`)},
+	}
+
+	l, err := NewLayout(fsys, []string{"_layouts/base/*.html"}, []string{"_layouts/default.html", "_layouts/wide.html"})
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+
+	// "default" still uses "baseof".
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	if err := l.renderer("default", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
+		t.Fatalf("renderer default: %v", err)
+	}
+	if got, want := rr.Body.String(), "<html><body>hello</body></html>"; got != want {
+		t.Errorf("default output = %q, want %q", got, want)
+	}
+
+	// "wide" uses "wide-baseof" via basename.
+	rr = httptest.NewRecorder()
+	if err := l.renderer("wide", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
+		t.Fatalf("renderer wide: %v", err)
+	}
+	if got, want := rr.Body.String(), `<div class="wide"><main>hello</main></div>`; got != want {
+		t.Errorf("wide output = %q, want %q", got, want)
 	}
 }
 
-func TestNewLayout_NoPatternReturnsError(t *testing.T) {
+func TestNewLayout_ResolveLayoutFallsBackToDefault(t *testing.T) {
+	fsys := fstest.MapFS{
+		"_layouts/default.html": {Data: []byte(`{{define "default"}}ok{{end}}`)},
+	}
+	l, err := NewLayout(fsys, nil, []string{"_layouts/default.html"})
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	tmpl, _ := l.resolveLayout("nonexistent")
+	defaultTmpl, _ := l.resolveLayout("default")
+	if tmpl != defaultTmpl {
+		t.Error("resolveLayout nonexistent should fall back to default")
+	}
+}
+
+func TestNewLayout_ResolveLayoutReturnsNilWhenNoDefault(t *testing.T) {
+	fsys := fstest.MapFS{
+		"_layouts/custom.html": {Data: []byte(`{{define "custom"}}ok{{end}}`)},
+	}
+	l, err := NewLayout(fsys, nil, []string{"_layouts/custom.html"})
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	tmpl, _ := l.resolveLayout("nonexistent")
+	if tmpl != nil {
+		t.Error("resolveLayout should return nil when neither name nor default exists")
+	}
+}
+
+func TestNewLayout_NoLayoutFilesReturnsError(t *testing.T) {
 	fsys := fstest.MapFS{}
-	if _, err := NewLayout(fsys); err == nil {
-		t.Error("expected error when no patterns given")
+	if _, err := NewLayout(fsys, nil, []string{"*.html"}); err == nil {
+		t.Error("expected error when no layout files match")
+	}
+}
+
+func TestNewLayout_NilLayoutPatternsReturnsError(t *testing.T) {
+	fsys := fstest.MapFS{}
+	if _, err := NewLayout(fsys, nil, nil); err == nil {
+		t.Error("expected error when layout patterns is nil")
 	}
 }
 
@@ -72,20 +153,37 @@ func TestNewLayout_ParseError(t *testing.T) {
 	fsys := fstest.MapFS{
 		"bad.html": {Data: []byte(`{{define "x"}}{{.Unclosed`)},
 	}
-	if _, err := NewLayout(fsys, "bad.html"); err == nil {
+	if _, err := NewLayout(fsys, nil, []string{"bad.html"}); err == nil {
 		t.Error("expected error for invalid template syntax")
 	}
 }
+
+func TestNewLayout_UnknownTemplateNameReturnsError(t *testing.T) {
+	fsys := fstest.MapFS{
+		"tmpl.html": {Data: []byte(`{{define "default"}}ok{{end}}`)},
+	}
+	l, err := NewLayout(fsys, nil, []string{"tmpl.html"})
+	if err != nil {
+		t.Fatalf("NewLayout: %v", err)
+	}
+	// "tmpl" layout exists; its entry-point name is not defined in the template set, so executing it errors.
+	tmpl, entry := l.resolveLayout("tmpl")
+	if err := tmpl.ExecuteTemplate(io.Discard, entry, nil); err == nil {
+		t.Error("expected error for unknown template name")
+	}
+}
+
+// --- builtin functions ---
 
 func TestBuiltinParentPath(t *testing.T) {
 	fsys := fstest.MapFS{
 		"tmpl.html": {Data: []byte(`{{define "t"}}{{parentPath .}}{{end}}`)},
 	}
-	l, err := NewLayout(fsys, "tmpl.html")
+	l, err := NewLayout(fsys, nil, []string{"tmpl.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
-	tmpl := l.Template()
+	tmpl, _ := l.resolveLayout("tmpl")
 
 	cases := []struct {
 		input string
@@ -111,7 +209,7 @@ func TestBuiltinSortByPath(t *testing.T) {
 	fsys := fstest.MapFS{
 		"tmpl.html": {Data: []byte(`{{define "t"}}{{range sortByPath .}}{{.SitePath}}{{end}}{{end}}`)},
 	}
-	l, err := NewLayout(fsys, "tmpl.html")
+	l, err := NewLayout(fsys, nil, []string{"tmpl.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
@@ -122,13 +220,16 @@ func TestBuiltinSortByPath(t *testing.T) {
 		&markdownPage{sitePath: "b"},
 	}
 	var buf strings.Builder
-	if err := l.Template().ExecuteTemplate(&buf, "t", pages); err != nil {
+	tmpl, _ := l.resolveLayout("tmpl")
+	if err := tmpl.ExecuteTemplate(&buf, "t", pages); err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	if got, want := buf.String(), "abc"; got != want {
 		t.Errorf("sortByPath output = %q, want %q", got, want)
 	}
 }
+
+// --- RenderContext link methods ---
 
 func TestRenderContextHref(t *testing.T) {
 	ctx := RenderContext{SitePath: "blog", Config: SiteConfig{BaseURL: "https://example.com/docs"}}
@@ -184,7 +285,7 @@ func TestRenderContextLinkMethodsTemplateUsage(t *testing.T) {
 	fsys := fstest.MapFS{
 		"tmpl.html": {Data: []byte(`{{define "t"}}{{range .Pages}}{{$.Ctx.Href .}}|{{$.Ctx.AbsURL .}};{{end}}{{end}}`)},
 	}
-	l, err := NewLayout(fsys, "tmpl.html")
+	l, err := NewLayout(fsys, nil, []string{"tmpl.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
@@ -200,8 +301,9 @@ func TestRenderContextLinkMethodsTemplateUsage(t *testing.T) {
 		},
 	}
 
+	tmpl, _ := l.resolveLayout("tmpl")
 	var buf strings.Builder
-	if err := l.Template().ExecuteTemplate(&buf, "t", data); err != nil {
+	if err := tmpl.ExecuteTemplate(&buf, "t", data); err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	if got, want := buf.String(), "post.md|https://example.com/docs/blog/post.md;../about.md|https://example.com/docs/about.md;"; got != want {

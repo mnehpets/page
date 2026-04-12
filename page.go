@@ -25,7 +25,7 @@ type Meta struct {
 	Date        time.Time
 	Tags        []string
 	Collection  string
-	Layouts     []string // rendering pipeline: each template renders into Content for the next
+	Layout      string   // entry-point layout template name; defaults to "default" when empty
 	Draft       bool
 	Description string
 	Image       Image

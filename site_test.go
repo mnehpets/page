@@ -179,7 +179,7 @@ func TestNewSite_WithLayout(t *testing.T) {
 	layoutFS := fstest.MapFS{
 		"custom.html": {Data: []byte(`{{define "default"}}custom{{end}}`)},
 	}
-	l, err := NewLayout(layoutFS, "custom.html")
+	l, err := NewLayout(layoutFS, nil, []string{"custom.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}

@@ -298,29 +298,44 @@ func Paginate(pages []Page, pageSize, pageNum int) ([]Page, bool) {
 	return pages[offset:end], hasMore
 }
 
-// discoverLayouts looks for a _layouts/ directory in fsys and parses it.
-// Returns nil layout (and no error) if the directory is absent.
+// discoverLayouts looks for a _layouts/ directory in fsys and builds a Layout.
+// Returns nil layout (and no error) if the directory is absent or empty.
+//
+// Files directly in _layouts/ are entry-point templates; their name without
+// extension becomes the layout name (e.g. _layouts/default.html → "default").
+//
+// Files in _layouts/base/ are common base templates parsed into every layout's
+// template set. When present, the "baseof" template they define is the
+// execution entry point and entry-point templates should define {{define "main"}}.
+// When absent, each layout is compiled alone and executed by its own template name.
 func discoverLayouts(fsys fs.FS) (*Layout, error) {
 	info, err := fs.Stat(fsys, "_layouts")
 	if err != nil || !info.IsDir() {
 		return nil, nil // absent or not a directory — fine
 	}
 
-	var files []string
-	if err := fs.WalkDir(fsys, "_layouts", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		files = append(files, p)
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("page: walk _layouts: %w", err)
+	// Base templates: files directly inside _layouts/base/ (one level only).
+	var basePatterns []string
+	if baseInfo, err := fs.Stat(fsys, "_layouts/base"); err == nil && baseInfo.IsDir() {
+		basePatterns = []string{"_layouts/base/*"}
 	}
 
-	if len(files) == 0 {
+	// Entry-point templates: non-directory entries directly inside _layouts/.
+	entries, err := fs.ReadDir(fsys, "_layouts")
+	if err != nil {
+		return nil, fmt.Errorf("page: read _layouts: %w", err)
+	}
+	var layoutFiles []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			layoutFiles = append(layoutFiles, "_layouts/"+e.Name())
+		}
+	}
+	if len(layoutFiles) == 0 {
 		return nil, nil
 	}
-	return NewLayout(fsys, files...)
+
+	return NewLayout(fsys, basePatterns, layoutFiles)
 }
 
 type indexEntry struct {

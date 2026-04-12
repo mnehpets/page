@@ -30,12 +30,6 @@ func ParseFrontMatter(r io.Reader) (Meta, []byte, error) {
 		return Meta{}, nil, fmt.Errorf("page: front matter: %w", err)
 	}
 
-	var layouts []string
-	if raw.Layout != "" {
-		layouts = append(layouts, raw.Layout)
-	}
-	layouts = append(layouts, raw.Layouts...)
-
 	meta := Meta{
 		Title:       raw.Title,
 		Author:      raw.Author,
@@ -43,7 +37,7 @@ func ParseFrontMatter(r io.Reader) (Meta, []byte, error) {
 		LastMod:     raw.LastMod.Time,
 		Tags:        raw.Tags,
 		Collection:  raw.Collection,
-		Layouts:     layouts,
+		Layout:      raw.Layout,
 		Draft:       raw.Draft,
 		Description: raw.Description,
 		Image:       Image{URL: raw.Image.URL, Alt: raw.Image.Alt},
@@ -81,7 +75,6 @@ type rawFrontMatter struct {
 	Tags        []string `yaml:"tags"`
 	Collection  string   `yaml:"collection"`
 	Layout      string   `yaml:"layout"`
-	Layouts     []string `yaml:"layouts"`
 	Draft       bool     `yaml:"draft"`
 	Description string   `yaml:"description"`
 	Image       rawImage `yaml:"image"`

@@ -116,10 +116,14 @@ func (b *pagesBuilder) Build(cfg Config, srv *Server, routePath string) ([]Route
 		}
 	}
 
-	noLayouts, err := mnfs.WithGlob("_layouts/*", mnfs.Disallowed)
-	if err != nil {
-		return nil, fmt.Errorf("pages (path=%q): _layouts filter: %w", b.Path, err)
-	}
+	// Block the entire _layouts/ tree (including subdirs like _layouts/base/)
+	// from being served as static files.
+	noLayouts := mnfs.WithRule(func(p string, _ func() (fs.FileInfo, error)) (mnfs.FilterMode, error) {
+		if p == "_layouts" || strings.HasPrefix(p, "_layouts/") {
+			return mnfs.Disallowed, nil
+		}
+		return 0, nil
+	})
 	serveFS := &filteredFS{
 		base:     dir,
 		dotfiles: b.Dotfiles,
