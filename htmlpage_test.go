@@ -156,7 +156,7 @@ func TestHTMLPage_ContentAndHeadPopulated(t *testing.T) {
 <body><p>Body content.</p></body>
 </html>`
 	fsys := fstest.MapFS{"page.html": {Data: []byte(src)}}
-	layout := makeTestLayout(t, `{{define "default"}}HEAD:{{.Head}}|BODY:{{.Content}}{{end}}`)
+	layout := makeTestLayout(t, `{{define "entry"}}HEAD:{{.Head}}|BODY:{{.Content}}{{end}}`)
 
 	pg, err := newHTMLPageFromFS("page.html", fsys, "page.html")
 	if err != nil {

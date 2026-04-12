@@ -12,8 +12,8 @@ import (
 
 func TestNewLayout_ParsesTemplates(t *testing.T) {
 	fsys := fstest.MapFS{
-		"_layouts/default.html": {Data: []byte(`{{define "default"}}<html>{{.Content}}</html>{{end}}`)},
-		"_layouts/post.html":    {Data: []byte(`{{define "post"}}<article>{{.Content}}</article>{{end}}`)},
+		"_layouts/default.html": {Data: []byte(`{{define "entry"}}<html>{{.Content}}</html>{{end}}`)},
+		"_layouts/post.html":    {Data: []byte(`{{define "entry"}}<article>{{.Content}}</article>{{end}}`)},
 	}
 
 	l, err := NewLayout(fsys, nil, []string{"_layouts/*.html"})
@@ -21,7 +21,7 @@ func TestNewLayout_ParsesTemplates(t *testing.T) {
 		t.Fatalf("NewLayout: %v", err)
 	}
 
-	// "default" layout: execute by its own template name (no base templates).
+	// "default" layout: standalone, executes "entry" directly.
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
 	if err := l.renderer("default", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
@@ -43,9 +43,9 @@ func TestNewLayout_ParsesTemplates(t *testing.T) {
 
 func TestNewLayout_BlockInheritance(t *testing.T) {
 	fsys := fstest.MapFS{
-		"_layouts/base/baseof.html": {Data: []byte(`{{define "baseof"}}<html><body>{{block "main" .}}{{end}}</body></html>{{end}}`)},
-		"_layouts/default.html":     {Data: []byte(`{{define "main"}}{{.Content}}{{end}}`)},
-		"_layouts/container.html":   {Data: []byte(`{{define "main"}}<div class="container">{{.Content}}</div>{{end}}`)},
+		"_layouts/base/entry.html": {Data: []byte(`{{define "entry"}}<html><body>{{block "main" .}}{{end}}</body></html>{{end}}`)},
+		"_layouts/default.html":    {Data: []byte(`{{define "main"}}{{.Content}}{{end}}`)},
+		"_layouts/container.html":  {Data: []byte(`{{define "main"}}<div class="container">{{.Content}}</div>{{end}}`)},
 	}
 
 	l, err := NewLayout(fsys, []string{"_layouts/base/*"}, []string{"_layouts/default.html", "_layouts/container.html"})
@@ -53,7 +53,7 @@ func TestNewLayout_BlockInheritance(t *testing.T) {
 		t.Fatalf("NewLayout: %v", err)
 	}
 
-	// "default" via baseof → main block renders bare content.
+	// "default" via entry → main block renders bare content.
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
 	if err := l.renderer("default", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
@@ -63,7 +63,7 @@ func TestNewLayout_BlockInheritance(t *testing.T) {
 		t.Errorf("default output = %q, want %q", got, want)
 	}
 
-	// "container" via baseof → main block wraps content in div.
+	// "container" via entry → main block wraps content in div.
 	rr = httptest.NewRecorder()
 	if err := l.renderer("container", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
 		t.Fatalf("renderer container: %v", err)
@@ -73,12 +73,12 @@ func TestNewLayout_BlockInheritance(t *testing.T) {
 	}
 }
 
-func TestNewLayout_CustomBasename(t *testing.T) {
+func TestNewLayout_CustomEntryname(t *testing.T) {
 	fsys := fstest.MapFS{
-		"_layouts/base/baseof.html":      {Data: []byte(`{{define "baseof"}}<html><body>{{block "main" .}}{{end}}</body></html>{{end}}`)},
-		"_layouts/base/wide-baseof.html": {Data: []byte(`{{define "wide-baseof"}}<div class="wide">{{block "main" .}}{{end}}</div>{{end}}`)},
-		"_layouts/default.html":          {Data: []byte(`{{define "main"}}{{.Content}}{{end}}`)},
-		"_layouts/wide.html":             {Data: []byte(`{{define "basename"}}wide-baseof{{end}}{{define "main"}}<main>{{.Content}}</main>{{end}}`)},
+		"_layouts/base/entry.html":      {Data: []byte(`{{define "entry"}}<html><body>{{block "main" .}}{{end}}</body></html>{{end}}`)},
+		"_layouts/base/wide-entry.html": {Data: []byte(`{{define "wide-entry"}}<div class="wide">{{block "main" .}}{{end}}</div>{{end}}`)},
+		"_layouts/default.html":         {Data: []byte(`{{define "main"}}{{.Content}}{{end}}`)},
+		"_layouts/wide.html":            {Data: []byte(`{{define "entryname"}}wide-entry{{end}}{{define "main"}}<main>{{.Content}}</main>{{end}}`)},
 	}
 
 	l, err := NewLayout(fsys, []string{"_layouts/base/*.html"}, []string{"_layouts/default.html", "_layouts/wide.html"})
@@ -86,7 +86,7 @@ func TestNewLayout_CustomBasename(t *testing.T) {
 		t.Fatalf("NewLayout: %v", err)
 	}
 
-	// "default" still uses "baseof".
+	// "default" uses "entry".
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
 	if err := l.renderer("default", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
@@ -96,7 +96,7 @@ func TestNewLayout_CustomBasename(t *testing.T) {
 		t.Errorf("default output = %q, want %q", got, want)
 	}
 
-	// "wide" uses "wide-baseof" via basename.
+	// "wide" uses "wide-entry" via entryname.
 	rr = httptest.NewRecorder()
 	if err := l.renderer("wide", RenderContext{Content: "hello"}).Render(rr, req); err != nil {
 		t.Fatalf("renderer wide: %v", err)
@@ -108,7 +108,7 @@ func TestNewLayout_CustomBasename(t *testing.T) {
 
 func TestNewLayout_ResolveLayoutFallsBackToDefault(t *testing.T) {
 	fsys := fstest.MapFS{
-		"_layouts/default.html": {Data: []byte(`{{define "default"}}ok{{end}}`)},
+		"_layouts/default.html": {Data: []byte(`{{define "entry"}}ok{{end}}`)},
 	}
 	l, err := NewLayout(fsys, nil, []string{"_layouts/default.html"})
 	if err != nil {
@@ -123,7 +123,7 @@ func TestNewLayout_ResolveLayoutFallsBackToDefault(t *testing.T) {
 
 func TestNewLayout_ResolveLayoutReturnsNilWhenNoDefault(t *testing.T) {
 	fsys := fstest.MapFS{
-		"_layouts/custom.html": {Data: []byte(`{{define "custom"}}ok{{end}}`)},
+		"_layouts/custom.html": {Data: []byte(`{{define "entry"}}ok{{end}}`)},
 	}
 	l, err := NewLayout(fsys, nil, []string{"_layouts/custom.html"})
 	if err != nil {
@@ -160,16 +160,16 @@ func TestNewLayout_ParseError(t *testing.T) {
 
 func TestNewLayout_UnknownTemplateNameReturnsError(t *testing.T) {
 	fsys := fstest.MapFS{
-		"tmpl.html": {Data: []byte(`{{define "default"}}ok{{end}}`)},
+		"tmpl.html": {Data: []byte(`{{define "other"}}ok{{end}}`)},
 	}
 	l, err := NewLayout(fsys, nil, []string{"tmpl.html"})
 	if err != nil {
 		t.Fatalf("NewLayout: %v", err)
 	}
-	// "tmpl" layout exists; its entry-point name is not defined in the template set, so executing it errors.
+	// "tmpl" layout exists but its file defines "other", not "entry", so executing it errors.
 	tmpl, entry := l.resolveLayout("tmpl")
 	if err := tmpl.ExecuteTemplate(io.Discard, entry, nil); err == nil {
-		t.Error("expected error for unknown template name")
+		t.Error("expected error when entry template is not defined")
 	}
 }
 

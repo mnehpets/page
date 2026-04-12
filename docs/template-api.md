@@ -7,25 +7,33 @@ Layout templates are standard Go `html/template` files stored under `_layouts/`.
 ```
 _layouts/
   base/
-    baseof.html    ← common base template; defines "baseof" and calls {{block "main" .}}
-    nav.html       ← any other shared templates called from baseof
-  default.html     ← "default" entry-point template; defines its own {{define "main"}}
-  post.html        ← "post" entry-point template; defines its own {{define "main"}}
+    entry.html     ← common base template; defines "entry" and calls {{block "main" .}}
+    nav.html       ← any other shared templates called from entry
+    post-entry.html  ← shared template for post-like layouts; defines "post-entry" and calls {{block "main" .}}
+  default.html     ← "default" entry-point template; defines "main" and uses the base "entry" template
+  post.html        ← "post" entry-point template; defines "main" and defines "entryname" as "post-entry"
+  sitemap.xml      ← standalone entry-point template; defines "entry" to override the base entry
 ```
 
 Content declares a single `layout:` name (e.g. `layout: post`). The renderer
 picks the matching entry-point template, combines it with the base templates,
-and executes `baseof`. The entry-point's `{{define "main"}}` block overrides
+and executes `entry`. The entry-point's `{{define "main"}}` block overrides
 the `{{block "main" .}}` placeholder in the base.
 
-**`baseof` is the default execution entry point** (borrowed from Hugo) — when
-base templates are present the renderer executes `baseof` unless overridden.
+**`entry` is the execution entry point** — the renderer always executes the
+template named `"entry"`, in every mode:
 
-An entry-point template can select a different entry point by defining a
-`"basename"` template whose text body is the desired template name:
+- **With base templates**: `"entry"` is defined in `_layouts/base/entry.html`
+  and calls `{{block "main" .}}`; the layout's entry-point file overrides that
+  block with `{{define "main"}}`.
+- **Without base templates**: `"entry"` is defined directly in the entry-point
+  file, which owns its full output with no shared outer shell.
+
+An entry-point template can select a different execution entry point by defining
+an `"entryname"` template whose text body is the desired template name:
 
 ```html
-{{define "basename"}}wide-baseof{{end}}
+{{define "entryname"}}wide-entry{{end}}
 ```
 
 The renderer executes this template with no data, trims whitespace from the
@@ -33,15 +41,15 @@ result, and uses it as the entry-point name. The named template must be defined
 in one of the base files. This allows multiple layouts to share the same base
 directory while each routing to a different outer shell.
 
-An entry-point template can also define `{{define "baseof"}}` inline to replace
+An entry-point template can also define `{{define "entry"}}` inline to replace
 the base shell entirely for that layout. This is useful for layouts that produce
 non-HTML output (XML sitemaps, Atom feeds) where the standard `<html>` wrapper
 is unwanted — the entry-point's definition wins because it is parsed after the
 base files.
 
-When no `_layouts/base/` directory is present the entry-point template is
-executed directly by its own defined template name — a simpler mode suitable
-for sites that don't need a shared outer structure.
+When no `_layouts/base/` directory is present, entry-point files must define
+`{{define "entry"}}` directly and own their full output — a simpler mode
+suitable for sites that don't need a shared outer structure.
 
 When a page doesn't have a `layout:` declaration, the `default` entry-point is used.
 
@@ -168,11 +176,11 @@ These functions are available in all layout templates.
 ### XML sitemap
 
 `_layouts/sitemap.html` — a standalone layout that owns its full output.
-Because it defines `baseof` itself, it replaces the base template's HTML shell
+Because it defines `entry` itself, it replaces the base template's HTML shell
 for this layout only:
 
 ```html
-{{ define "baseof" }}{{ safeHTML "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }}
+{{ define "entry" }}{{ safeHTML "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }}
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 {{- range .Site.ByTag "mime:text/html" }}
 {{- if not (hasTag .Meta "noindex") }}
@@ -186,8 +194,8 @@ for this layout only:
 ```
 
 The sitemap page declares `contentType: application/xml` and `layout: sitemap`.
-Defining `baseof` in the entry-point file overrides the base template's
-`baseof` for this layout, so no HTML wrapper is emitted.
+Defining `entry` in the entry-point file overrides the base template's
+`entry` for this layout, so no HTML wrapper is emitted.
 
 ### Navigation sidebar
 
@@ -234,12 +242,12 @@ the current page. Siblings are obtained with `ChildrenOf` on the parent path.
 
 When a site needs more than one outer HTML shell (e.g. a standard page and a
 full-width landing page), add a second base template to `_layouts/base/` and
-point each layout that needs it at the right one via `basename`.
+point each layout that needs it at the right one via `entryname`.
 
-`_layouts/base/baseof.html` — standard shell with a sidebar slot:
+`_layouts/base/entry.html` — standard shell with a sidebar slot:
 
 ```html
-{{ define "baseof" }}
+{{ define "entry" }}
 <!DOCTYPE html>
 <html>
 <body>
@@ -250,10 +258,10 @@ point each layout that needs it at the right one via `basename`.
 {{ end }}
 ```
 
-`_layouts/base/wide-baseof.html` — full-width shell, no sidebar:
+`_layouts/base/wide-entry.html` — full-width shell, no sidebar:
 
 ```html
-{{ define "wide-baseof" }}
+{{ define "wide-entry" }}
 <!DOCTYPE html>
 <html>
 <body>
@@ -266,23 +274,23 @@ point each layout that needs it at the right one via `basename`.
 `_layouts/landing.html` — selects the wide shell:
 
 ```html
-{{define "basename"}}wide-baseof{{end}}
+{{define "entryname"}}wide-entry{{end}}
 
 {{define "main"}}
 <section class="hero">{{ .Content }}</section>
 {{end}}
 ```
 
-All other entry-point templates that do not define `basename` continue to use
-`baseof`. The base files are compiled into every layout's template set, so
-`wide-baseof` is available to any layout that asks for it.
+All other entry-point templates that do not define `entryname` continue to use
+`entry`. The base files are compiled into every layout's template set, so
+`wide-entry` is available to any layout that asks for it.
 
 ### Injecting JSON-LD and passing data to JavaScript
 
-`_layouts/base/baseof.html` — the shared outer shell:
+`_layouts/base/entry.html` — the shared outer shell:
 
 ```html
-{{ define "baseof" }}
+{{ define "entry" }}
 <!DOCTYPE html>
 <html lang="{{ .Config.Lang }}">
 <head>
@@ -313,6 +321,6 @@ All other entry-point templates that do not define `basename` continue to use
 {{ end }}
 ```
 
-Content declares `layout: article`. The renderer combines `baseof.html` with
-`article.html`, executes `baseof`, and the `{{block "main" .}}` is filled by
+Content declares `layout: article`. The renderer combines `entry.html` with
+`article.html`, executes `entry`, and the `{{block "main" .}}` is filled by
 `article.html`'s `{{define "main"}}`.

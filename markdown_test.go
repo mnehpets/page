@@ -47,7 +47,7 @@ func TestMarkdownPage_BodyRenderedViaGoldmark(t *testing.T) {
 	fsys := fstest.MapFS{
 		"post.md": {Data: []byte(src)},
 	}
-	layout := makeTestLayout(t, `{{define "default"}}{{.Content}}{{end}}`)
+	layout := makeTestLayout(t, `{{define "entry"}}{{.Content}}{{end}}`)
 
 	pg, err := newMarkdownPageFromFS("post.md", fsys, "post.md")
 	if err != nil {
@@ -82,7 +82,7 @@ func TestMarkdownPage_FencedCodeBlockLanguageClass(t *testing.T) {
 	fsys := fstest.MapFS{
 		"code.md": {Data: []byte(src)},
 	}
-	layout := makeTestLayout(t, `{{define "default"}}{{.Content}}{{end}}`)
+	layout := makeTestLayout(t, `{{define "entry"}}{{.Content}}{{end}}`)
 
 	pg, err := newMarkdownPageFromFS("code.md", fsys, "code.md")
 	if err != nil {
@@ -109,7 +109,7 @@ func TestMarkdownPage_RenderWritesLayoutOutput(t *testing.T) {
 	fsys := fstest.MapFS{
 		"page.md": {Data: []byte(src)},
 	}
-	layout := makeTestLayout(t, `{{define "default"}}<html><head><title>{{.Meta.Title}}</title></head><body>{{.Content}}</body></html>{{end}}`)
+	layout := makeTestLayout(t, `{{define "entry"}}<html><head><title>{{.Meta.Title}}</title></head><body>{{.Content}}</body></html>{{end}}`)
 
 	pg, err := newMarkdownPageFromFS("page.md", fsys, "page.md")
 	if err != nil {

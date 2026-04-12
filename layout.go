@@ -56,20 +56,24 @@ var builtinFuncs = template.FuncMap{
 
 // Layout holds one compiled template set per named layout. Each set combines
 // the common base templates (from _layouts/base/) with a single entry-point
-// template (from _layouts/) so that {{define "main"}} in the entry-point
-// overrides {{block "main" .}} in the base without name collisions across layouts.
+// template (from _layouts/). The execution entry point is always the template
+// named "entry":
 //
-// When no base templates are present each layout file is compiled alone
-// and executed directly by its own template name.
+//   - With base templates: "entry" is defined in the base file and calls
+//     {{block "main" .}}; the entry-point overrides that block with {{define "main"}}.
+//   - Without base templates: "entry" is defined directly in the entry-point file,
+//     which owns its full output with no shared outer shell.
+//
+// An entry-point may select a different entry-point name via {{define "entryname"}}.
 type Layout struct {
 	templates map[string]*template.Template // layout name → template set
-	baseEntry string                        // template name to execute: "baseof" when base templates exist, "" otherwise
 }
 
 // resolveLayout returns the compiled template set for name (falling back to
 // "default") and the template name to pass to ExecuteTemplate. The entry-point
-// name honours the optional "basename" override template (see NewLayout docs).
-// Returns (nil, "") when neither name nor "default" is registered.
+// name is always "entry" unless the layout defines an "entryname" template
+// whose body names a different template. Returns (nil, "") when neither name
+// nor "default" is registered.
 func (l *Layout) resolveLayout(name string) (*template.Template, string) {
 	tmpl, ok := l.templates[name]
 	if !ok {
@@ -78,12 +82,7 @@ func (l *Layout) resolveLayout(name string) (*template.Template, string) {
 	if tmpl == nil {
 		return nil, ""
 	}
-	if l.baseEntry == "" {
-		return tmpl, name // no base templates
-	}
-	// If base templates are present, look for an optional "basename" template that overrides
-	// the entry point name from "baseof" to a layout-specific entry point name.
-	if t := tmpl.Lookup("basename"); t != nil {
+	if t := tmpl.Lookup("entryname"); t != nil {
 		var buf bytes.Buffer
 		if err := t.Execute(&buf, nil); err == nil {
 			if s := strings.TrimSpace(buf.String()); s != "" {
@@ -91,7 +90,7 @@ func (l *Layout) resolveLayout(name string) (*template.Template, string) {
 			}
 		}
 	}
-	return tmpl, l.baseEntry // default entrypoint is "baseof"
+	return tmpl, "entry"
 }
 
 // renderer returns a renderer that executes the named layout from l.
@@ -139,18 +138,16 @@ func (l *Layout) renderer(name string, ctx RenderContext) endpoint.Renderer {
 //
 // basePatterns are glob patterns (fs.Glob syntax) matching the common base
 // templates. These files are parsed into every layout's template set. Base
-// templates should define a "baseof" template that calls {{block "main" .}}
+// templates should define an "entry" template that calls {{block "main" .}}
 // to delegate to the layout-specific content.
 //
 // layoutPatterns are glob patterns matching the entry-point templates. Each
 // matched file becomes one named layout; the name is derived from the
 // filename without extension (e.g. "_layouts/container.html" → "container").
-// Entry-point templates should provide {{define "main"}} to override the
-// base block, or define their own named template when used without a base.
-//
-// If basePatterns is empty, each layout is compiled alone and executed
-// directly by its own template name without a common base. In this case,
-// entry-point templates may still define their own named templates.
+// Entry-point templates should provide {{define "main"}} to override the base
+// block (when base templates are present), or {{define "entry"}} to own their
+// full output (when used standalone). A layout may override the entry-point
+// name by defining {{define "entryname"}}other-entry{{end}}.
 //
 // Returns an error if no layout files match layoutPatterns.
 func NewLayout(fsys fs.FS, basePatterns []string, layoutPatterns []string) (*Layout, error) {
@@ -182,14 +179,7 @@ func NewLayout(fsys fs.FS, basePatterns []string, layoutPatterns []string) (*Lay
 		templates[name] = tmpl
 	}
 
-	// If base templates are present, the template entry point is the base template
-	// name "baseof", otherwise, call the layout file directly by its own name.
-	baseEntry := ""
-	if len(baseFiles) > 0 {
-		baseEntry = "baseof"
-	}
-
-	return &Layout{templates: templates, baseEntry: baseEntry}, nil
+	return &Layout{templates: templates}, nil
 }
 
 // expandGlobs expands a list of glob patterns into deduplicated file paths.
