@@ -10,8 +10,6 @@ import (
 
 	"github.com/mnehpets/http/endpoint"
 	"github.com/yuin/goldmark"
-	gmeta "github.com/yuin/goldmark-meta"
-	"github.com/yuin/goldmark/parser"
 )
 
 type markdownPage struct {
@@ -34,11 +32,8 @@ func (p *markdownPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, 
 		return nil, fmt.Errorf("page: read %s: %w", p.sitePath, err)
 	}
 
-	// Convert markdown → HTML eagerly. goldmark-meta strips front matter from output.
-	md := goldmark.New(goldmark.WithExtensions(gmeta.Meta))
-	ctx := parser.NewContext()
 	var buf bytes.Buffer
-	if err := md.Convert(src, &buf, parser.WithContext(ctx)); err != nil {
+	if err := goldmark.Convert(src, &buf); err != nil {
 		return nil, fmt.Errorf("page: render markdown %s: %w", p.sitePath, err)
 	}
 
@@ -62,7 +57,12 @@ func (p *markdownPage) source() ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return io.ReadAll(f)
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	_, body, _ := extractFrontMatterBlock(data)
+	return body, nil
 }
 
 // newMarkdownPageFromFS creates a markdownPage backed by the given FS.
