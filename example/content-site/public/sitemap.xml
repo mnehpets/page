@@ -6,7 +6,8 @@
   "name": "Sitemap",
   "keywords": ["noindex"],
   "site": {
-    "layout": "sitemap"
+    "layout": "sitemap",
+    "contentType": "application/xml"
   }
 }
 </script>
