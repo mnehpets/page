@@ -9,6 +9,7 @@ import (
 
 	"github.com/mnehpets/http/endpoint"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 type markdownPage struct {
@@ -28,7 +29,8 @@ func (p *markdownPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, 
 	}
 
 	var buf bytes.Buffer
-	if err := goldmark.Convert(src, &buf); err != nil {
+	md := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	if err := md.Convert(src, &buf); err != nil {
 		return nil, fmt.Errorf("page: render markdown %s: %w", p.sitePath, err)
 	}
 
