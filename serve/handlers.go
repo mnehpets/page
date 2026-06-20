@@ -1,13 +1,18 @@
 package pageserve
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
+	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -251,6 +256,9 @@ type filesBuilder struct {
 	DirList   bool   `yaml:"dir_list"`
 	Dotfiles  bool   `yaml:"dotfiles"`
 	Symlinks  bool   `yaml:"symlinks"`
+	// WebDAV, if true, additionally serves WebDAV PROPFIND (read-only file
+	// metadata) and OPTIONS (DAV class-1 advertisement) alongside GET/HEAD.
+	WebDAV bool `yaml:"webdav"`
 }
 
 func (b *filesBuilder) Validate(cfg Config) error {
@@ -272,15 +280,40 @@ func (b *filesBuilder) Build(cfg Config, srv *Server, routePath string) ([]Route
 		symlinks: b.Symlinks,
 	}
 
-	ep := (&endpoint.FileSystem{
+	get := staticFileEndpoint(fsys, indexHTML, b.DirList)
+
+	pattern := withSubPath(routePath)
+	if !b.WebDAV {
+		// Plain static serving: one entry matching all methods.
+		return []RouteEntry{{Pattern: pattern, Endpoint: get}}, nil
+	}
+
+	// WebDAV mode: dispatch methods through an inner ServeMux mounted at the same
+	// pattern, rather than registering method-specific patterns on the main mux.
+	// A method-specific pattern like "GET /{path...}" is incomparable to a
+	// method-agnostic one like "/gen/{path...}" (narrower method, broader path),
+	// which makes http.ServeMux panic on a routing conflict. Keeping the main-mux
+	// pattern method-agnostic avoids that; the inner mux also gives us automatic
+	// HEAD-from-GET handling and 405 + Allow responses for unsupported methods.
+	dav := http.NewServeMux()
+	dav.Handle("GET "+pattern, endpoint.HandleFunc(get))
+	dav.Handle("PROPFIND "+pattern, endpoint.HandleFunc(webdavPropfindEndpoint(fsys, b.Dotfiles, b.Symlinks)))
+	dav.Handle("OPTIONS "+pattern, endpoint.HandleFunc(webdavOptionsEndpoint()))
+	return []RouteEntry{{Pattern: pattern, Endpoint: opaqueHandlerEndpoint(dav)}}, nil
+}
+
+// staticFileEndpoint builds the FileSystem GET endpoint: direct file mapping,
+// optional index.html resolution, and optional directory listings rendered with
+// FancyDirTemplate.
+func staticFileEndpoint(fsys fs.FS, indexHTML, dirList bool) Endpoint {
+	return (&endpoint.FileSystem{
 		FS: func(_ context.Context, _ *http.Request) (fs.FS, error) {
 			return fsys, nil
 		},
 		IndexHTML:        indexHTML,
-		DirectoryListing: b.DirList,
+		DirectoryListing: dirList,
 		DirTemplate:      endpoint.FancyDirTemplate,
 	}).Endpoint
-	return []RouteEntry{{Pattern: withSubPath(routePath), Endpoint: ep}}, nil
 }
 
 func filesHandlerFactory() HandlerFactory {
@@ -293,6 +326,173 @@ func filesHandlerFactory() HandlerFactory {
 		}
 		return b, nil
 	}
+}
+
+// webdavOptionsEndpoint answers OPTIONS for a webdav-enabled files route,
+// advertising WebDAV class-1 compliance so clients will mount the tree.
+func webdavOptionsEndpoint() Endpoint {
+	return func(http.ResponseWriter, *http.Request, Params) (endpoint.Renderer, error) {
+		return endpoint.RendererFunc(func(w http.ResponseWriter, _ *http.Request) error {
+			w.Header().Set("DAV", "1")
+			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND")
+			w.WriteHeader(http.StatusOK)
+			return nil
+		}), nil
+	}
+}
+
+// webdavPropfindEndpoint answers a WebDAV PROPFIND with a 207 Multi-Status
+// document describing the requested resource and, for a Depth: 1 request on a
+// collection, its immediate children. Only the size, last-modified time, and
+// resource type (file vs collection) are reported.
+//
+// dotfiles and symlinks mirror the filter applied to filteredFS.Open so that
+// child listings do not expose resources that a GET could not fetch.
+func webdavPropfindEndpoint(fsys fs.FS, dotfiles, symlinks bool) Endpoint {
+	return func(w http.ResponseWriter, r *http.Request, params Params) (endpoint.Renderer, error) {
+		// RFC 4918 defaults an absent Depth to infinity; we cap unspecified
+		// requests at 1 and reject infinity rather than walking the whole tree.
+		depth := r.Header.Get("Depth")
+		if depth == "" {
+			depth = "1"
+		}
+		if depth != "0" && depth != "1" {
+			return nil, endpoint.Error(http.StatusForbidden, "PROPFIND Depth must be 0 or 1",
+				fmt.Errorf("webdav: unsupported Depth %q", depth))
+		}
+
+		// Normalise into an fs.FS path the same way FileSystem.Endpoint does.
+		p := path.Clean("/" + params.Path)
+		if p == "/" {
+			p = "."
+		} else {
+			p = strings.TrimPrefix(p, "/")
+		}
+
+		file, err := fsys.Open(p)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, endpoint.Error(http.StatusNotFound, "not found", err)
+			}
+			return nil, endpoint.Error(http.StatusInternalServerError, "internal server error", err)
+		}
+		defer file.Close()
+
+		info, err := file.Stat()
+		if err != nil {
+			return nil, endpoint.Error(http.StatusInternalServerError, "internal server error", err)
+		}
+
+		// href values mirror the request path so clients can navigate from them.
+		base := r.URL.EscapedPath()
+		ms := davMultistatus{Responses: []davResponse{davResponseFor(base, info)}}
+
+		if info.IsDir() && depth == "1" {
+			if rdf, ok := file.(fs.ReadDirFile); ok {
+				entries, err := rdf.ReadDir(-1)
+				if err != nil {
+					return nil, endpoint.Error(http.StatusInternalServerError, "failed to read directory", err)
+				}
+				dirHref := base
+				if !strings.HasSuffix(dirHref, "/") {
+					dirHref += "/"
+				}
+				for _, e := range entries {
+					// Honour the same dotfile/symlink filter applied to Open.
+					if !dotfiles && strings.HasPrefix(e.Name(), ".") {
+						continue
+					}
+					if !symlinks && e.Type()&fs.ModeSymlink != 0 {
+						continue
+					}
+					ci, err := e.Info()
+					if err != nil {
+						continue
+					}
+					href := dirHref + url.PathEscape(e.Name())
+					if e.IsDir() {
+						href += "/"
+					}
+					ms.Responses = append(ms.Responses, davResponseFor(href, ci))
+				}
+			}
+		}
+
+		return &multiStatusRenderer{ms: ms}, nil
+	}
+}
+
+// davResponseFor builds the <response> element for a single resource, reporting
+// resource type plus size/content-type (files only) and last-modified time.
+func davResponseFor(href string, info fs.FileInfo) davResponse {
+	prop := davProp{
+		LastModified: info.ModTime().UTC().Format(http.TimeFormat),
+	}
+	if info.IsDir() {
+		prop.ResourceType.Collection = &struct{}{}
+	} else {
+		size := info.Size()
+		prop.ContentLength = &size
+		prop.ContentType = mime.TypeByExtension(path.Ext(info.Name()))
+	}
+	return davResponse{
+		Href:     href,
+		Propstat: davPropstat{Prop: prop, Status: "HTTP/1.1 200 OK"},
+	}
+}
+
+// davMultistatus models the subset of the RFC 4918 multistatus document needed
+// to report file metadata. The "DAV:" namespace is declared once on the root
+// element; child elements inherit it as the default namespace, so only the root
+// tag carries the namespace in its struct tag.
+type davMultistatus struct {
+	XMLName   xml.Name      `xml:"DAV: multistatus"`
+	Responses []davResponse `xml:"response"`
+}
+
+type davResponse struct {
+	Href     string      `xml:"href"`
+	Propstat davPropstat `xml:"propstat"`
+}
+
+type davPropstat struct {
+	Prop   davProp `xml:"prop"`
+	Status string  `xml:"status"`
+}
+
+type davProp struct {
+	ResourceType  davResourceType `xml:"resourcetype"`
+	ContentLength *int64          `xml:"getcontentlength,omitempty"`
+	LastModified  string          `xml:"getlastmodified,omitempty"`
+	ContentType   string          `xml:"getcontenttype,omitempty"`
+}
+
+// davResourceType is empty for files and <collection/> for directories.
+type davResourceType struct {
+	Collection *struct{} `xml:"collection"`
+}
+
+// multiStatusRenderer writes a 207 Multi-Status WebDAV response. The document is
+// marshalled into a buffer first so a marshalling error surfaces before any
+// status or body is committed.
+type multiStatusRenderer struct {
+	ms davMultistatus
+}
+
+func (mr *multiStatusRenderer) Render(w http.ResponseWriter, _ *http.Request) error {
+	var buf bytes.Buffer
+	buf.WriteString(xml.Header)
+	enc := xml.NewEncoder(&buf)
+	enc.Indent("", "  ")
+	if err := enc.Encode(mr.ms); err != nil {
+		return err
+	}
+	buf.WriteByte('\n')
+
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.WriteHeader(http.StatusMultiStatus)
+	_, err := w.Write(buf.Bytes())
+	return err
 }
 
 // --- redirect ---

@@ -343,6 +343,243 @@ func TestFilesHandlerFactory_IndexHTMLDefault(t *testing.T) {
 	}
 }
 
+// --- files handler: webdav option ---
+
+// buildWebdavMux parses, validates, and builds a webdav-enabled files handler,
+// registering all of its method-specific entries on a ServeMux so PROPFIND/GET
+// dispatch and {path...} extraction match production routing.
+func buildWebdavMux(t *testing.T, dir, routePath string) *http.ServeMux {
+	t.Helper()
+	node := routeNode(t, map[string]any{"path": routePath, "dir": dir, "webdav": true})
+	bldr, err := filesHandlerFactory()(node)
+	if err != nil {
+		t.Fatalf("factory: %v", err)
+	}
+	if err := bldr.Validate(Config{}); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	entries, err := bldr.Build(Config{}, &Server{}, routePath)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	mux := http.NewServeMux()
+	for _, e := range entries {
+		mux.Handle(e.Pattern, endpoint.HandleFunc(e.Endpoint))
+	}
+	return mux
+}
+
+// A webdav route at "/" must coexist with a more path-specific route. Earlier
+// the webdav handler registered method-specific patterns ("GET /{path...}"),
+// which http.ServeMux treats as incomparable to a method-agnostic specific
+// pattern ("/gen/{path...}") and panics on. Mounting via an inner mux keeps the
+// main-mux pattern method-agnostic so both register cleanly.
+func TestWebdav_RootCoexistsWithSpecificRoute(t *testing.T) {
+	dir := t.TempDir()
+
+	davBldr, err := filesHandlerFactory()(routeNode(t, map[string]any{"path": "/", "dir": dir, "webdav": true}))
+	if err != nil {
+		t.Fatalf("files factory: %v", err)
+	}
+	davEntries, err := davBldr.Build(Config{}, &Server{}, "/")
+	if err != nil {
+		t.Fatalf("files Build: %v", err)
+	}
+	genEntries, err := (&redirectBuilder{Path: "/gen/", To: "/elsewhere/"}).Build(Config{}, &Server{}, "/gen/")
+	if err != nil {
+		t.Fatalf("redirect Build: %v", err)
+	}
+
+	// Mirror build.go: register every entry on a single ServeMux. This must not panic.
+	mux := http.NewServeMux()
+	for _, e := range append(davEntries, genEntries...) {
+		mux.Handle(e.Pattern, endpoint.HandleFunc(e.Endpoint))
+	}
+
+	// The specific route still wins for its prefix.
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/gen/x", nil))
+	if w.Code != http.StatusFound {
+		t.Errorf("/gen/x status = %d, want %d (redirect route should win)", w.Code, http.StatusFound)
+	}
+}
+
+// GET retains the static file handler behaviour, including index.html resolution.
+func TestWebdav_GetServesIndexHTML(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<h1>hi</h1>"), 0600)
+
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("GET", "/dav/", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if !strings.Contains(w.Body.String(), "<h1>hi</h1>") {
+		t.Errorf("GET body = %q, want index.html contents", w.Body.String())
+	}
+}
+
+func TestWebdav_PropfindFile(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("hello world")
+	_ = os.WriteFile(filepath.Join(dir, "file.txt"), body, 0600)
+
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("PROPFIND", "/dav/file.txt", nil))
+
+	if w.Code != http.StatusMultiStatus {
+		t.Fatalf("PROPFIND status = %d, want %d", w.Code, http.StatusMultiStatus)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/xml") {
+		t.Errorf("Content-Type = %q, want application/xml", ct)
+	}
+	out := w.Body.String()
+	for _, want := range []string{
+		"<href>/dav/file.txt</href>",
+		"<getcontentlength>11</getcontentlength>",
+		"<getlastmodified>",
+		"HTTP/1.1 200 OK",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("PROPFIND body missing %q\nbody:\n%s", want, out)
+		}
+	}
+}
+
+// Depth: 1 on a collection lists the collection itself plus immediate children,
+// and marks directories as collections.
+func TestWebdav_PropfindCollectionDepth1(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0600)
+	_ = os.Mkdir(filepath.Join(dir, "sub"), 0700)
+
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	req := httptest.NewRequest("PROPFIND", "/dav/", nil)
+	req.Header.Set("Depth", "1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMultiStatus {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusMultiStatus)
+	}
+	out := w.Body.String()
+	for _, want := range []string{
+		"<href>/dav/</href>",
+		"<href>/dav/a.txt</href>",
+		"<href>/dav/sub/</href>",
+		"<collection></collection>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("PROPFIND body missing %q\nbody:\n%s", want, out)
+		}
+	}
+}
+
+// Depth: 0 reports only the collection itself, not its children.
+func TestWebdav_PropfindCollectionDepth0(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0600)
+
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	req := httptest.NewRequest("PROPFIND", "/dav/", nil)
+	req.Header.Set("Depth", "0")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if strings.Contains(w.Body.String(), "a.txt") {
+		t.Errorf("Depth 0 listing should not include children:\n%s", w.Body.String())
+	}
+}
+
+func TestWebdav_PropfindDepthInfinityRejected(t *testing.T) {
+	dir := t.TempDir()
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	req := httptest.NewRequest("PROPFIND", "/dav/", nil)
+	req.Header.Set("Depth", "infinity")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("Depth infinity status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+}
+
+func TestWebdav_PropfindMissingReturns404(t *testing.T) {
+	dir := t.TempDir()
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("PROPFIND", "/dav/nope.txt", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// Child listings honour the dotfile filter, matching what GET would serve.
+func TestWebdav_PropfindHidesDotfiles(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, ".secret"), []byte("x"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "visible.txt"), []byte("x"), 0600)
+
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	req := httptest.NewRequest("PROPFIND", "/dav/", nil)
+	req.Header.Set("Depth", "1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	out := w.Body.String()
+	if strings.Contains(out, ".secret") {
+		t.Errorf("dotfile leaked into listing:\n%s", out)
+	}
+	if !strings.Contains(out, "visible.txt") {
+		t.Errorf("expected visible.txt in listing:\n%s", out)
+	}
+}
+
+// OPTIONS advertises WebDAV class-1 compliance so clients will mount the tree.
+func TestWebdav_OptionsAdvertisesDAV(t *testing.T) {
+	dir := t.TempDir()
+	mux := buildWebdavMux(t, dir, "/dav/")
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest("OPTIONS", "/dav/", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("OPTIONS status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if dav := w.Header().Get("DAV"); dav != "1" {
+		t.Errorf("DAV header = %q, want %q", dav, "1")
+	}
+	if allow := w.Header().Get("Allow"); !strings.Contains(allow, "PROPFIND") {
+		t.Errorf("Allow header = %q, want it to include PROPFIND", allow)
+	}
+}
+
+// Without webdav enabled, the files handler registers no PROPFIND route, so a
+// PROPFIND falls through to the all-methods static entry rather than emitting a
+// multistatus document.
+func TestFiles_WithoutWebdav_NoPropfind(t *testing.T) {
+	dir := t.TempDir()
+	h := buildHandler(t, filesHandlerFactory(), routeNode(t, map[string]any{
+		"path": "/assets/",
+		"dir":  dir,
+	}))
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("PROPFIND", "/assets/nope.txt", nil))
+	if strings.Contains(w.Body.String(), "multistatus") {
+		t.Errorf("plain files handler should not emit a multistatus document:\n%s", w.Body.String())
+	}
+}
+
 // --- defaultMuxHandlerFactory ---
 
 func TestDefaultMuxHandlerFactory_ServesDefaultMux(t *testing.T) {

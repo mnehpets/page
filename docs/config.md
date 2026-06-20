@@ -286,6 +286,7 @@ Serves a directory tree as raw files via `http.FileServer` semantics.
   index_html: true        # optional — serve index.html for directories (default true)
   dotfiles: false         # optional — serve/list dotfiles (default false)
   symlinks: false         # optional — follow symlinks (default false)
+  webdav: false           # optional — also serve read-only WebDAV (default false)
 ```
 
 | Field | Type | Default | Description |
@@ -295,8 +296,22 @@ Serves a directory tree as raw files via `http.FileServer` semantics.
 | `index_html` | bool | `true` | Serve `index.html` for directory requests |
 | `dotfiles` | bool | `false` | Serve and list dotfiles |
 | `symlinks` | bool | `false` | Follow symlinks |
+| `webdav` | bool | `false` | Also answer WebDAV `PROPFIND`/`OPTIONS` (read-only) |
 
 `dotfiles` and `symlinks` affect both serving and listing.
+
+**`webdav` behaviour:** when enabled, the route additionally answers WebDAV
+`PROPFIND` and `OPTIONS` alongside `GET`/`HEAD`, so read-only WebDAV clients can
+mount and browse the tree. `OPTIONS` advertises class-1 compliance (`DAV: 1`).
+`PROPFIND` responses are `207 Multi-Status` XML reporting only the resource type
+(file vs collection), size (`getcontentlength`), content type (`getcontenttype`),
+and last-modified time (`getlastmodified`). The `Depth` header is honoured for
+`0` (the resource itself) and `1` (the resource plus its immediate children); an
+absent `Depth` is treated as `1`, and `Depth: infinity` is rejected with `403`
+rather than walking the whole tree. The `dotfiles`/`symlinks` filter applies to
+`PROPFIND` child listings too, so a resource hidden from `GET` is also hidden
+from `PROPFIND`. Write methods (`PUT`, `DELETE`, `MKCOL`, `PROPPATCH`, `LOCK`)
+are not implemented.
 
 #### `redirect`
 
