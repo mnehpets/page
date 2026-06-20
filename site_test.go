@@ -16,7 +16,7 @@ func makeSiteFS() fstest.MapFS {
 	return fstest.MapFS{
 		"blog/hello-world.md":   {Data: []byte("---\ntitle: Hello World\ntags:\n  - go\ncollection: blog\n---\nBody.\n")},
 		"blog/draft.md":         {Data: []byte("---\ntitle: Draft\ndraft: true\ntags:\n  - go\ncollection: blog\n---\nDraft body.\n")},
-		"blog/index.md":         {Data: []byte("---\ntitle: Blog Index\n---\nIndex.\n")},
+		"blog/README.md":        {Data: []byte("---\ntitle: Blog Index\n---\nIndex.\n")},
 		"blog/index.html":       {Data: []byte(`<!DOCTYPE html><html><head><script type="application/ld+json">{"site":{"layout":"default"}}</script><title>Blog HTML Index</title></head><body>HTML Index</body></html>`)},
 		"about.html":            {Data: []byte(`<!DOCTYPE html><html><head><script type="application/ld+json">{"site":{"layout":"default"}}</script><title>About</title></head><body>About us</body></html>`)},
 		"style.css":             {Data: []byte("body {}")},
@@ -56,7 +56,7 @@ func TestNewSite_SitePathsCorrect(t *testing.T) {
 }
 
 func TestNewSite_IndexFilePriority(t *testing.T) {
-	// Both blog/index.html and blog/index.md exist; index.html wins.
+	// Both blog/index.html and blog/README.md exist; index.html wins.
 	fsys := makeSiteFS()
 	site, err := NewSite(fsys)
 	if err != nil {
@@ -288,14 +288,14 @@ func TestPaginate(t *testing.T) {
 
 func makeNavSiteFS() fstest.MapFS {
 	return fstest.MapFS{
-		"index.md":             {Data: []byte("---\ntitle: Home\n---\n")},
-		"about.md":             {Data: []byte("---\ntitle: About\n---\n")},
-		"blog/index.md":        {Data: []byte("---\ntitle: Blog\n---\n")},
-		"blog/post-a.md":       {Data: []byte("---\ntitle: Post A\n---\n")},
-		"blog/post-b.md":       {Data: []byte("---\ntitle: Post B\n---\n")},
-		"blog/drafts/index.md": {Data: []byte("---\ntitle: Drafts\ndraft: true\n---\n")},
-		"blog/go/index.md":     {Data: []byte("---\ntitle: Go Posts\n---\n")},
-		"blog/go/intro.md":     {Data: []byte("---\ntitle: Intro\n---\n")},
+		"README.md":             {Data: []byte("---\ntitle: Home\n---\n")},
+		"about.md":              {Data: []byte("---\ntitle: About\n---\n")},
+		"blog/README.md":        {Data: []byte("---\ntitle: Blog\n---\n")},
+		"blog/post-a.md":        {Data: []byte("---\ntitle: Post A\n---\n")},
+		"blog/post-b.md":        {Data: []byte("---\ntitle: Post B\n---\n")},
+		"blog/drafts/README.md": {Data: []byte("---\ntitle: Drafts\ndraft: true\n---\n")},
+		"blog/go/README.md":     {Data: []byte("---\ntitle: Go Posts\n---\n")},
+		"blog/go/intro.md":      {Data: []byte("---\ntitle: Intro\n---\n")},
 	}
 }
 
@@ -337,7 +337,7 @@ func TestAncestorsOf(t *testing.T) {
 
 	t.Run("intermediate missing path is skipped", func(t *testing.T) {
 		fsys2 := fstest.MapFS{
-			"index.md":           {Data: []byte("---\ntitle: Home\n---\n")},
+			"README.md":          {Data: []byte("---\ntitle: Home\n---\n")},
 			"docs/guide/page.md": {Data: []byte("---\ntitle: Page\n---\n")},
 			// docs/ has no index page — should be skipped
 		}
@@ -651,9 +651,9 @@ func TestFileSitePath(t *testing.T) {
 		{"blog/hello-world.md", "blog/hello-world.md", false, 0},
 		{"blog/index.html", "blog", true, 1},
 		{"blog/index.htm", "blog", true, 2},
-		{"blog/index.md", "blog", true, 3},
+		{"blog/README.md", "blog", true, 3},
 		{"index.html", ".", true, 1},
-		{"index.md", ".", true, 3},
+		{"README.md", ".", true, 3},
 		{"style.css", "style.css", false, 0},
 	}
 	for _, c := range cases {

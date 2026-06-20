@@ -204,14 +204,14 @@ func TestDeleteFile_NonIndex(t *testing.T) {
 }
 
 func TestDeleteFile_IndexFallback(t *testing.T) {
-	// blog/index.html has priority 1; blog/index.md has priority 3.
-	// After deleting index.html, index.md should become the directory index.
+	// blog/index.html has priority 1; blog/README.md has priority 3.
+	// After deleting index.html, README.md should become the directory index.
 	fsys := fstest.MapFS{
 		"blog/index.html": {
 			Data:    []byte(`<!DOCTYPE html><html><head><script type="application/ld+json">{"site":{"layout":"default"}}</script><title>HTML Index</title></head><body></body></html>`),
 			ModTime: time.Unix(1000, 0),
 		},
-		"blog/index.md": {
+		"blog/README.md": {
 			Data:    []byte("---\ntitle: MD Index\n---\n"),
 			ModTime: time.Unix(1000, 0),
 		},
@@ -242,8 +242,8 @@ func TestDeleteFile_IndexFallback(t *testing.T) {
 
 func TestRefresh_Concurrency(t *testing.T) {
 	fsys := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: A\n---\n"), ModTime: time.Unix(1000, 0)},
-		"b.md": {Data: []byte("---\ntitle: B\n---\n"), ModTime: time.Unix(1000, 0)},
+		"a.md":                  {Data: []byte("---\ntitle: A\n---\n"), ModTime: time.Unix(1000, 0)},
+		"b.md":                  {Data: []byte("---\ntitle: B\n---\n"), ModTime: time.Unix(1000, 0)},
 		"_layouts/default.html": {Data: []byte(`{{define "default"}}{{.Meta.Title}}{{end}}`)},
 	}
 	idx, err := NewSite(fsys)

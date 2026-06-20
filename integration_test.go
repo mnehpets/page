@@ -21,8 +21,8 @@ var integrationFS = fstest.MapFS{
 <head><title>About</title></head>
 <body><p>About page content.</p></body>
 </html>`)},
-	"style.css":     {Data: []byte("body { margin: 0; }")},
-	"blog/index.md": {Data: []byte("---\ntitle: Blog Index\n---\nBlog index content.\n")},
+	"style.css":      {Data: []byte("body { margin: 0; }")},
+	"blog/README.md": {Data: []byte("---\ntitle: Blog Index\n---\nBlog index content.\n")},
 	"_layouts/default.html": {Data: []byte(
 		`{{define "entry"}}<!DOCTYPE html><html><body>{{.Content}}</body></html>{{end}}`,
 	)},

@@ -24,7 +24,7 @@ The system SHALL provide a `Refresh() (int, error)` method on `fsSite` that walk
 - **THEN** `site.Get(sitePath)` returns `nil` and the page no longer appears in `site.All()`
 
 #### Scenario: Index file priority re-evaluated on change
-- **WHEN** a directory's index files change (e.g., `index.html` is added alongside `index.md`) and `Refresh()` is invoked
+- **WHEN** a directory's index files change (e.g., `index.html` is added alongside `README.md`) and `Refresh()` is invoked
 - **THEN** the higher-priority file (`index.html`) becomes the directory index
 
 #### Scenario: Layout templates refreshed if changed
@@ -62,11 +62,11 @@ The system SHALL provide a `DeleteFile(filePath string)` method on `fsSite` that
 - **THEN** `site.Get("blog/hello.md")` returns `nil` and the page is absent from `site.All()`
 
 #### Scenario: Index file deletion falls back to lower priority
-- **WHEN** `DeleteFile("blog/index.html")` is called and `blog/index.md` exists on disk
-- **THEN** `blog/index.md` becomes the directory index for `"blog"`
+- **WHEN** `DeleteFile("blog/index.html")` is called and `blog/README.md` exists on disk
+- **THEN** `blog/README.md` becomes the directory index for `"blog"`
 
 #### Scenario: Deleting the only index file removes directory entry
-- **WHEN** `DeleteFile("blog/index.md")` is called and no other index file exists for `blog/`
+- **WHEN** `DeleteFile("blog/README.md")` is called and no other index file exists for `blog/`
 - **THEN** `site.Get("blog")` returns `nil`
 
 ---

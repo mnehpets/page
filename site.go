@@ -340,7 +340,7 @@ func discoverLayouts(fsys fs.FS) (*Layout, error) {
 
 type indexEntry struct {
 	page     Page
-	priority int // 1 = index.html, 2 = index.htm, 3 = index.md
+	priority int // 1 = index.html, 2 = index.htm, 3 = README.md
 }
 
 // buildPageIndex walks fsys and builds the URL-path → Page map. Index files
@@ -429,8 +429,8 @@ func deriveSlug(sitePath string) string {
 }
 
 // fileSitePath derives the site-relative path and index priority for a file
-// path within an fs.FS. Index files (index.html, index.htm, index.md) map to
-// their parent directory path (e.g. "blog/index.md" → "blog", "index.md" →
+// path within an fs.FS. Index files (index.html, index.htm, README.md) map to
+// their parent directory path (e.g. "blog/README.md" → "blog", "README.md" →
 // "."); all other files keep their full relative path.
 // priority is 0 for non-index files; lower values beat higher for index files.
 func fileSitePath(filePath string) (sitePath string, isIndex bool, priority int) {
@@ -441,7 +441,7 @@ func fileSitePath(filePath string) (sitePath string, isIndex bool, priority int)
 		return dir, true, 1
 	case "index.htm":
 		return dir, true, 2
-	case "index.md":
+	case "README.md":
 		return dir, true, 3
 	}
 	return filePath, false, 0
@@ -606,7 +606,7 @@ func (s *fsSite) FileRenderer() endpoint.FileRendererHook {
 }
 
 // DirRenderer returns an endpoint.FileRendererHook for directory requests.
-// Index files (index.html > index.htm > index.md) are registered under the
+// Index files (index.html > index.htm > README.md) are registered under the
 // parent directory path at NewSite time, so the hook calls site.Get(path)
 // with no ambiguity. On nil, nil the hook does not call ReadDir on the file.
 func (s *fsSite) DirRenderer() endpoint.FileRendererHook {
@@ -626,13 +626,13 @@ func indexCandidates(dirSitePath string) []indexCandidate {
 		return []indexCandidate{
 			{"index.html", 1},
 			{"index.htm", 2},
-			{"index.md", 3},
+			{"README.md", 3},
 		}
 	}
 	return []indexCandidate{
 		{dirSitePath + "/index.html", 1},
 		{dirSitePath + "/index.htm", 2},
-		{dirSitePath + "/index.md", 3},
+		{dirSitePath + "/README.md", 3},
 	}
 }
 

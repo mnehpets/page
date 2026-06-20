@@ -50,7 +50,7 @@ Metadata is resolved using a three-level fallback chain, applied per field (firs
 - **THEN** `page.Meta().Slug` is the last segment of the page's URL path with the content extension stripped (e.g. `hello-world` for `/blog/hello-world.md`)
 
 #### Scenario: Slug derived from index file uses directory name
-- **WHEN** a file has no `slug` in its front matter or JSON-LD and its URL path is a directory path (e.g. `/blog/staff` from `blog/staff/index.md`)
+- **WHEN** a file has no `slug` in its front matter or JSON-LD and its URL path is a directory path (e.g. `/blog/staff` from `blog/staff/README.md`)
 - **THEN** `page.Meta().Slug` is the last segment of the URL path (e.g. `staff`)
 
 #### Scenario: Explicit slug overrides derived slug

@@ -37,12 +37,12 @@ The system SHALL provide `NewSite(fsys fs.FS, opts ...SiteOption) (Site, error)`
 - **THEN** its URL path is `/blog/hello-world.md`
 
 #### Scenario: index file maps to directory path
-- **WHEN** a file exists at `blog/index.html`, `blog/index.htm`, or `blog/index.md` in the FS
+- **WHEN** a file exists at `blog/index.html`, `blog/index.htm`, or `blog/README.md` in the FS
 - **THEN** its URL path is `/blog/`
 
 #### Scenario: index file conflict resolution
-- **WHEN** a directory contains more than one index file (e.g. both `blog/index.html` and `blog/index.md`)
-- **THEN** `index.html` takes priority over `index.htm`, which takes priority over `index.md`; only the highest-priority file is registered at the directory path
+- **WHEN** a directory contains more than one index file (e.g. both `blog/index.html` and `blog/README.md`)
+- **THEN** `index.html` takes priority over `index.htm`, which takes priority over `README.md`; only the highest-priority file is registered at the directory path
 
 #### Scenario: Static files excluded from index
 - **WHEN** the FS contains a `.png` or `.css` file

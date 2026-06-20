@@ -24,12 +24,12 @@ The system SHALL expose a `FileRenderer() endpoint.FileRendererHook` method on `
 ---
 
 ### Requirement: DirRenderer hook
-The system SHALL expose a `DirRenderer() endpoint.FileRendererHook` method on `Site`. The hook signature is the same type as `FileRendererHook`: `(sitePath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. When called by `endpoint.FileSystem` for a directory request, it receives the URL path string for the directory (e.g. `/blog/`) and the open directory `fs.File`, then calls `site.Get(sitePath)`. This works because `index.html`, `index.htm`, and `index.md` files are registered in the site index under their parent directory path rather than their file path (e.g. `blog/index.md` is indexed at `/blog/`). When multiple index files exist, priority is resolved at `NewSite` time (`index.html` > `index.htm` > `index.md`) so the hook always calls a single `site.Get` with no ambiguity. If a page is found, it returns a non-nil `endpoint.Renderer`; otherwise it returns `nil, nil`.
+The system SHALL expose a `DirRenderer() endpoint.FileRendererHook` method on `Site`. The hook signature is the same type as `FileRendererHook`: `(sitePath string, f fs.File) (endpoint.Renderer, error)`. The returned func is a closure over the `Site` and its `Layout`. When called by `endpoint.FileSystem` for a directory request, it receives the URL path string for the directory (e.g. `/blog/`) and the open directory `fs.File`, then calls `site.Get(sitePath)`. This works because `index.html`, `index.htm`, and `README.md` files are registered in the site index under their parent directory path rather than their file path (e.g. `blog/README.md` is indexed at `/blog/`). When multiple index files exist, priority is resolved at `NewSite` time (`index.html` > `index.htm` > `README.md`) so the hook always calls a single `site.Get` with no ambiguity. If a page is found, it returns a non-nil `endpoint.Renderer`; otherwise it returns `nil, nil`.
 
 The hook is called after path normalisation but **before** any index-file lookup or directory listing, giving it priority over `IndexHTML`. The hook MUST NOT call `ReadDir` on the file if it returns `nil, nil` (`Stat` is safe). File ownership on a non-nil return transfers to the hook; on `nil, nil` ownership remains with `endpoint.FileSystem`.
 
-#### Scenario: Directory URL resolves to index.md
-- **WHEN** the `DirRendererHook` is called with sitePath `/blog/` and `blog/index.md` is registered at `/blog/`
+#### Scenario: Directory URL resolves to README.md
+- **WHEN** the `DirRendererHook` is called with sitePath `/blog/` and `blog/README.md` is registered at `/blog/`
 - **THEN** it returns a non-nil `endpoint.Renderer` for that page
 
 #### Scenario: Directory URL resolves to index.html
