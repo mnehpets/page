@@ -343,6 +343,17 @@ type indexEntry struct {
 	priority int // 1 = index.html, 2 = index.htm, 3 = README.md
 }
 
+// brokenSymlink reports whether d is a symlink whose target cannot be resolved
+// (e.g. it points at a non-existent file). Such dangling links are skipped
+// during indexing rather than treated as a fatal error.
+func brokenSymlink(fsys fs.FS, filePath string, d fs.DirEntry) bool {
+	if d.Type()&fs.ModeSymlink == 0 {
+		return false
+	}
+	_, err := fs.Stat(fsys, filePath)
+	return err != nil
+}
+
 // buildPageIndex walks fsys and builds the URL-path → Page map. Index files
 // compete per directory; the highest-priority winner is kept.
 // It also returns a fileMeta map recording the fsFilePath → {sitePath, modTime}
@@ -358,6 +369,9 @@ func buildPageIndex(fsys fs.FS) (map[string]Page, map[string]fileRecord, error) 
 		}
 		if d.IsDir() {
 			return nil
+		}
+		if brokenSymlink(fsys, filePath, d) {
+			return nil // dangling symlink — skip silently
 		}
 
 		info, err := d.Info()
@@ -663,6 +677,9 @@ func (s *fsSite) Refresh() (int, error) {
 	if err := fs.WalkDir(s.fsys, ".", func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
+		}
+		if brokenSymlink(s.fsys, filePath, d) {
+			return nil // dangling symlink — skip silently
 		}
 		seen[filePath] = struct{}{}
 		info, err := d.Info()

@@ -1,6 +1,8 @@
 package page
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -21,6 +23,32 @@ func makeSiteFS() fstest.MapFS {
 		"about.html":            {Data: []byte(`<!DOCTYPE html><html><head><script type="application/ld+json">{"site":{"layout":"default"}}</script><title>About</title></head><body>About us</body></html>`)},
 		"style.css":             {Data: []byte("body {}")},
 		"_layouts/default.html": {Data: []byte(`{{define "default"}}{{.Content}}{{end}}`)},
+	}
+}
+
+// TestNewSite_DanglingSymlinkSkipped verifies that a symlink pointing at a
+// non-existent target is silently skipped during indexing rather than failing
+// the whole site build. fstest.MapFS can't model symlinks, so use a real dir.
+func TestNewSite_DanglingSymlinkSkipped(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "real.md"),
+		[]byte("---\ntitle: Real\n---\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "missing.md"),
+		filepath.Join(dir, "broken.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	site, err := NewSite(os.DirFS(dir))
+	if err != nil {
+		t.Fatalf("NewSite with dangling symlink: %v", err)
+	}
+	if pg := viewOf(site).Get("real.md"); pg == nil {
+		t.Error("expected page at real.md")
+	}
+	if pg := viewOf(site).Get("broken.md"); pg != nil {
+		t.Error("dangling symlink should not be indexed")
 	}
 }
 
