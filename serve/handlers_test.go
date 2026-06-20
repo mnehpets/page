@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/mnehpets/http/endpoint"
 	"gopkg.in/yaml.v3"
 )
@@ -594,5 +595,31 @@ func TestDefaultMuxHandlerFactory_ServesDefaultMux(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("GET", sentinel, nil))
 	if w.Code != http.StatusTeapot {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusTeapot)
+	}
+}
+
+// TestAddWatchDirs_DanglingSymlink verifies that a dangling symlink under the
+// watched tree does not abort the whole watch. On macOS (kqueue) w.Add
+// enumerates child files and fails with ErrNotExist on a broken symlink; on
+// Linux (inotify) it never enumerates, so this also documents intended cross
+// platform behaviour.
+func TestAddWatchDirs_DanglingSymlink(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "venv", "bin")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(sub, "missing-python"), filepath.Join(sub, "python")); err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatalf("NewWatcher: %v", err)
+	}
+	defer w.Close()
+
+	if err := addWatchDirs(w, dir); err != nil {
+		t.Fatalf("addWatchDirs with dangling symlink: %v", err)
 	}
 }

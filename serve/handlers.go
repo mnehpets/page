@@ -151,12 +151,23 @@ func (b *pagesBuilder) Build(cfg Config, srv *Server, routePath string) ([]Route
 
 // addWatchDirs adds root and every subdirectory under it to w.
 // fsnotify is non-recursive on Linux; we must add each directory explicitly.
+//
+// On macOS (kqueue) w.Add registers a watch on every child file to mimic
+// inotify, so a directory containing a dangling symlink (e.g. a broken
+// .venv/bin/python) fails with ErrNotExist. Such a directory is skipped
+// silently rather than aborting the whole watch.
 func addWatchDirs(w *fsnotify.Watcher, root string) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || !d.IsDir() {
 			return err
 		}
-		return w.Add(path)
+		if err := w.Add(path); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // dangling symlink under this dir — skip silently
+			}
+			return err
+		}
+		return nil
 	})
 }
 
