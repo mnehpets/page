@@ -135,6 +135,37 @@ func TestMarkdownPage_RenderWritesLayoutOutput(t *testing.T) {
 	}
 }
 
+func TestMarkdownPage_RawHTMLPassedThrough(t *testing.T) {
+	src := "---\ntitle: Raw\n---\n<details><summary>Click</summary>body</details>\n"
+	fsys := fstest.MapFS{
+		"raw.md": {Data: []byte(src)},
+	}
+	layout := makeTestLayout(t, `{{define "entry"}}{{.Content}}{{end}}`)
+
+	pg, err := newMarkdownPageFromFS("raw.md", fsys, "raw.md")
+	if err != nil {
+		t.Fatalf("newMarkdownPageFromFS: %v", err)
+	}
+
+	r := httptest.NewRequest("GET", "/raw.md", nil)
+	renderer, err := pg.Renderer(nil, layout)
+	if err != nil {
+		t.Fatalf("Renderer: %v", err)
+	}
+	w := httptest.NewRecorder()
+	if err := renderer.Render(w, r); err != nil {
+		t.Fatalf("renderer.Render: %v", err)
+	}
+
+	got := w.Body.String()
+	if !strings.Contains(got, "<details>") {
+		t.Errorf("raw <details> was escaped/removed from output: %q", got)
+	}
+	if strings.Contains(got, "&lt;details&gt;") {
+		t.Errorf("raw HTML was escaped in output: %q", got)
+	}
+}
+
 func TestMarkdownPage_NilLayoutReturnsError(t *testing.T) {
 	fsys := fstest.MapFS{
 		"post.md": {Data: []byte("Hello.\n")},

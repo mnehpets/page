@@ -10,6 +10,7 @@ import (
 	"github.com/mnehpets/http/endpoint"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 type markdownPage struct {
@@ -29,7 +30,15 @@ func (p *markdownPage) Renderer(site *site, layout *Layout) (endpoint.Renderer, 
 	}
 
 	var buf bytes.Buffer
-	md := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		// WithUnsafe allows raw HTML in the markdown source to pass through
+		// to the rendered output rather than being escaped. This is the
+		// expected behaviour for a static site generator, where authors
+		// embed arbitrary HTML (e.g. <details>, <figure>, embeds) directly
+		// in their content.
+		goldmark.WithRendererOptions(html.WithUnsafe()),
+	)
 	if err := md.Convert(src, &buf); err != nil {
 		return nil, fmt.Errorf("page: render markdown %s: %w", p.sitePath, err)
 	}
